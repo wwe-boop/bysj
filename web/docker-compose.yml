@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # 后端API服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - DEBUG=true
+      - SECRET_KEY=leo-satellite-simulation-2024
+    volumes:
+      - ./backend:/app
+      - ../src:/app/src
+      - ../logs:/app/logs
+    working_dir: /app
+    command: python src/api/main.py --host 0.0.0.0 --port 5000 --debug
+    networks:
+      - leo-network
+    restart: unless-stopped
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:5000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    working_dir: /app
+    command: npm run dev
+    networks:
+      - leo-network
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Redis缓存服务
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - leo-network
+    restart: unless-stopped
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    networks:
+      - leo-network
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+
+networks:
+  leo-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local

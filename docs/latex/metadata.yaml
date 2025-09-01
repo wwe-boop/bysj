@@ -1,0 +1,17 @@
+title: 面向低轨卫星互联网的智能准入与联合调度-协作定位一体化系统
+author: 作者姓名
+date: \today
+lang: zh-CN
+mainfont: Noto Serif CJK SC
+sansfont: Noto Sans CJK SC
+monofont: JetBrains Mono
+geometry: margin=2.5cm
+toc: true
+toc-depth: 2
+numbersections: true
+colorlinks: true
+linkcolor: blue
+urlcolor: blue
+citestyle: numeric
+bibliography: ../reference/refs.bib
+
