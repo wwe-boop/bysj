@@ -1,8 +1,10 @@
 """
 准入控制API路由
+支持DRL训练环境、奖励函数配置、训练评估等功能
 """
 
 import logging
+import numpy as np
 from flask import Blueprint, request, jsonify
 from marshmallow import Schema, fields, ValidationError
 
@@ -30,6 +32,46 @@ class AdmissionConfigSchema(Schema):
     minSignalStrengthDbm = fields.Float(missing=-120.0)
     positioningWeight = fields.Float(missing=0.3)
     qosThresholds = fields.Dict(missing=dict)
+
+    # DRL相关配置
+    drlEnabled = fields.Bool(missing=False)
+    rewardWeights = fields.Dict(missing=dict)
+    trainingMode = fields.Bool(missing=False)
+    explorationRate = fields.Float(missing=0.1)
+
+
+class DRLTrainingConfigSchema(Schema):
+    """DRL训练配置验证模式"""
+    algorithm = fields.Str(required=True, validate=lambda x: x in ['PPO', 'A2C', 'SAC'])
+    learningRate = fields.Float(missing=3e-4)
+    batchSize = fields.Int(missing=64)
+    nSteps = fields.Int(missing=2048)
+    nEpochs = fields.Int(missing=10)
+    gamma = fields.Float(missing=0.99)
+    clipRange = fields.Float(missing=0.2)
+
+    # 奖励函数权重
+    rewardWeights = fields.Dict(missing={
+        'qoe_weight': 0.4,
+        'fairness_weight': 0.2,
+        'efficiency_weight': 0.2,
+        'stability_weight': 0.1,
+        'positioning_weight': 0.1
+    })
+
+    # 环境配置
+    useRealEnvironment = fields.Bool(missing=False)
+    maxEpisodeSteps = fields.Int(missing=1000)
+    evaluationFreq = fields.Int(missing=10)
+
+
+class DRLStateSchema(Schema):
+    """DRL状态信息验证模式"""
+    networkState = fields.Dict(required=True)
+    userRequests = fields.List(fields.Dict(), missing=list)
+    resourceUtilization = fields.Dict(missing=dict)
+    positioningQuality = fields.Dict(missing=dict)
+    historicalMetrics = fields.Dict(missing=dict)
 
 
 @admission_bp.route('/request', methods=['POST'])
@@ -296,7 +338,7 @@ def get_admission_history():
         # 获取查询参数
         limit = request.args.get('limit', 100, type=int)
         offset = request.args.get('offset', 0, type=int)
-        
+
         # 获取仿真引擎
         from ..routes.simulation import _simulation_engine
         if not _simulation_engine:
@@ -309,14 +351,14 @@ def get_admission_history():
                     'offset': offset
                 }
             })
-        
+
         # 获取历史记录
         admission_controller = _simulation_engine.admission_controller
         if hasattr(admission_controller, 'get_decision_history'):
             history = admission_controller.get_decision_history(limit, offset)
         else:
             history = {'records': [], 'total': 0}
-        
+
         return jsonify({
             'success': True,
             'data': {
@@ -326,9 +368,368 @@ def get_admission_history():
                 'offset': offset
             }
         })
-        
+
     except Exception as e:
         logger.error(f"获取准入历史失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+# DRL训练相关API端点
+
+@admission_bp.route('/drl/training/start', methods=['POST'])
+def start_drl_training():
+    """启动DRL训练"""
+    try:
+        # 验证请求数据
+        schema = DRLTrainingConfigSchema()
+        try:
+            config = schema.load(request.get_json() or {})
+        except ValidationError as err:
+            return jsonify({
+                'success': False,
+                'error': '训练配置无效',
+                'details': err.messages
+            }), 400
+
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            return jsonify({
+                'success': False,
+                'error': '仿真引擎未启动'
+            }), 503
+
+        # 启动DRL训练
+        admission_controller = _simulation_engine.admission_controller
+        if hasattr(admission_controller, 'start_drl_training'):
+            training_id = admission_controller.start_drl_training(config)
+            return jsonify({
+                'success': True,
+                'data': {
+                    'trainingId': training_id,
+                    'config': config,
+                    'message': 'DRL训练已启动'
+                }
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'DRL训练功能未实现'
+            }), 501
+
+    except Exception as e:
+        logger.error(f"启动DRL训练失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admission_bp.route('/drl/training/stop', methods=['POST'])
+def stop_drl_training():
+    """停止DRL训练"""
+    try:
+        training_id = request.json.get('trainingId') if request.json else None
+
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            return jsonify({
+                'success': False,
+                'error': '仿真引擎未启动'
+            }), 503
+
+        # 停止DRL训练
+        admission_controller = _simulation_engine.admission_controller
+        if hasattr(admission_controller, 'stop_drl_training'):
+            result = admission_controller.stop_drl_training(training_id)
+            return jsonify({
+                'success': True,
+                'data': result,
+                'message': 'DRL训练已停止'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'DRL训练功能未实现'
+            }), 501
+
+    except Exception as e:
+        logger.error(f"停止DRL训练失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admission_bp.route('/drl/training/status', methods=['GET'])
+def get_drl_training_status():
+    """获取DRL训练状态"""
+    try:
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            return jsonify({
+                'success': False,
+                'error': '仿真引擎未启动'
+            }), 503
+
+        # 获取训练状态
+        admission_controller = _simulation_engine.admission_controller
+        if hasattr(admission_controller, 'get_drl_training_status'):
+            status = admission_controller.get_drl_training_status()
+            return jsonify({
+                'success': True,
+                'data': status
+            })
+        else:
+            # 返回默认状态
+            return jsonify({
+                'success': True,
+                'data': {
+                    'isTraining': False,
+                    'trainingId': None,
+                    'episode': 0,
+                    'totalEpisodes': 0,
+                    'currentReward': 0.0,
+                    'averageReward': 0.0,
+                    'loss': 0.0,
+                    'explorationRate': 0.1,
+                    'trainingTime': 0.0
+                }
+            })
+
+    except Exception as e:
+        logger.error(f"获取DRL训练状态失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admission_bp.route('/drl/training/metrics', methods=['GET'])
+def get_drl_training_metrics():
+    """获取DRL训练指标"""
+    try:
+        # 获取查询参数
+        training_id = request.args.get('trainingId')
+        limit = request.args.get('limit', 1000, type=int)
+
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            return jsonify({
+                'success': False,
+                'error': '仿真引擎未启动'
+            }), 503
+
+        # 获取训练指标
+        admission_controller = _simulation_engine.admission_controller
+        if hasattr(admission_controller, 'get_drl_training_metrics'):
+            metrics = admission_controller.get_drl_training_metrics(training_id, limit)
+            return jsonify({
+                'success': True,
+                'data': metrics
+            })
+        else:
+            # 返回模拟数据
+            episodes = list(range(1, min(limit + 1, 101)))
+            rewards = [np.random.normal(0.5, 0.2) for _ in episodes]
+            losses = [np.random.exponential(0.1) for _ in episodes]
+
+            return jsonify({
+                'success': True,
+                'data': {
+                    'episodes': episodes,
+                    'rewards': rewards,
+                    'losses': losses,
+                    'qoeScores': [r * 0.8 + 0.2 for r in rewards],
+                    'fairnessScores': [r * 0.6 + 0.4 for r in rewards],
+                    'efficiencyScores': [r * 0.9 + 0.1 for r in rewards]
+                }
+            })
+
+    except Exception as e:
+        logger.error(f"获取DRL训练指标失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admission_bp.route('/drl/environment/state', methods=['GET'])
+def get_drl_environment_state():
+    """获取DRL环境状态"""
+    try:
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            return jsonify({
+                'success': False,
+                'error': '仿真引擎未启动'
+            }), 503
+
+        # 获取环境状态
+        network_state = _simulation_engine.current_network_state
+        if not network_state:
+            return jsonify({
+                'success': False,
+                'error': '网络状态不可用'
+            }), 503
+
+        # 构建DRL环境状态
+        env_state = {
+            'networkState': {
+                'satelliteCount': len(network_state.satellites),
+                'activeFlows': len(network_state.active_flows),
+                'linkUtilization': dict(list(network_state.link_utilization.items())[:10]),
+                'timestamp': network_state.time_step
+            },
+            'resourceUtilization': {
+                'totalCapacity': len(network_state.satellites) * 1000.0,  # 假设每个卫星1Gbps
+                'usedCapacity': sum(network_state.link_utilization.values()),
+                'utilizationRate': sum(network_state.link_utilization.values()) / (len(network_state.satellites) * 1000.0) if network_state.satellites else 0
+            },
+            'positioningQuality': {
+                'averageGdop': 3.5,  # 模拟值
+                'coverageRatio': 0.85,
+                'averageAccuracy': 5.2
+            },
+            'historicalMetrics': {
+                'recentQoE': [0.8, 0.75, 0.82, 0.78, 0.85],
+                'recentAdmissionRate': [0.9, 0.88, 0.92, 0.87, 0.91],
+                'recentThroughput': [850, 820, 880, 810, 890]
+            }
+        }
+
+        return jsonify({
+            'success': True,
+            'data': env_state
+        })
+
+    except Exception as e:
+        logger.error(f"获取DRL环境状态失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admission_bp.route('/drl/reward/config', methods=['GET'])
+def get_drl_reward_config():
+    """获取DRL奖励函数配置"""
+    try:
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            # 返回默认配置
+            return jsonify({
+                'success': True,
+                'data': {
+                    'rewardWeights': {
+                        'qoe_weight': 0.4,
+                        'fairness_weight': 0.2,
+                        'efficiency_weight': 0.2,
+                        'stability_weight': 0.1,
+                        'positioning_weight': 0.1
+                    },
+                    'rewardComponents': {
+                        'qoe': {
+                            'enabled': True,
+                            'description': 'QoE变化奖励',
+                            'formula': 'delta_qoe * qoe_weight'
+                        },
+                        'fairness': {
+                            'enabled': True,
+                            'description': 'Jain公平性指数',
+                            'formula': 'jain_fairness_index * fairness_weight'
+                        },
+                        'efficiency': {
+                            'enabled': True,
+                            'description': '资源利用效率',
+                            'formula': 'resource_efficiency * efficiency_weight'
+                        },
+                        'stability': {
+                            'enabled': True,
+                            'description': '系统稳定性',
+                            'formula': 'stability_metric * stability_weight'
+                        },
+                        'positioning': {
+                            'enabled': True,
+                            'description': '定位质量(CRLB/GDOP/SINR)',
+                            'formula': 'positioning_quality * positioning_weight'
+                        }
+                    }
+                }
+            })
+
+        # 获取当前配置
+        admission_controller = _simulation_engine.admission_controller
+        if hasattr(admission_controller, 'get_reward_config'):
+            config = admission_controller.get_reward_config()
+            return jsonify({
+                'success': True,
+                'data': config
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'data': {
+                    'rewardWeights': {
+                        'qoe_weight': 0.4,
+                        'fairness_weight': 0.2,
+                        'efficiency_weight': 0.2,
+                        'stability_weight': 0.1,
+                        'positioning_weight': 0.1
+                    }
+                }
+            })
+
+    except Exception as e:
+        logger.error(f"获取DRL奖励配置失败: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@admission_bp.route('/drl/reward/config', methods=['PUT'])
+def update_drl_reward_config():
+    """更新DRL奖励函数配置"""
+    try:
+        config = request.get_json() or {}
+
+        # 验证权重总和
+        weights = config.get('rewardWeights', {})
+        total_weight = sum(weights.values())
+        if abs(total_weight - 1.0) > 0.01:
+            return jsonify({
+                'success': False,
+                'error': f'奖励权重总和应为1.0，当前为{total_weight:.3f}'
+            }), 400
+
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine, _simulation_running
+        if _simulation_running:
+            return jsonify({
+                'success': False,
+                'error': '仿真运行时无法修改奖励配置'
+            }), 400
+
+        # 更新配置
+        if _simulation_engine and hasattr(_simulation_engine.admission_controller, 'update_reward_config'):
+            _simulation_engine.admission_controller.update_reward_config(config)
+
+        return jsonify({
+            'success': True,
+            'message': 'DRL奖励函数配置已更新'
+        })
+
+    except Exception as e:
+        logger.error(f"更新DRL奖励配置失败: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

@@ -417,6 +417,53 @@ class LyapunovScheduler:
         return penalty
 ```
 
+## 3. 协作定位与 Beam Hint（新增）
+
+### 3.1 定位质量建模与特征注入
+- 目标：将定位相关质量指标引入 DRL 状态，支撑“准入-分配-定位”协同优化。
+- 指标：CRLB_norm、GDOP_norm、mean_SINR/min_SINR、visible_beams_cnt、cooperative_sat_cnt、pos_availability。
+- 计算：基于卫星/波束可见性和测量模型构建 FIM，计算 CRLB；GDOP 基于几何构型；SINR 基于链路预算；特征统一归一化/平滑。
+- 状态注入：在 `extract_state_from_hypatia` 中合并上述特征，作为 `state` 的一部分。
+
+### 3.2 协作定位融合策略
+- 多信息源融合（参考 `reference/协作定位.pdf`）：
+  - 融合 TOA/TDOA/AOA 等测量，采用加权最小二乘/贝叶斯融合近似最优；
+  - 在预算约束（并发束数/功率/时隙）下优先选择对 FIM 增益最大的观测组合。
+- 协作收益：定义 `cooperation_gain = f(FIM_gain, GDOP_drop, CRLB_drop)` 作为辅助目标或奖励项。
+
+### 3.3 Beam Hint 生成算法（启发式）
+伪代码（面向最小可行实现）：
+
+```python
+def beam_schedule_hint(payload):
+    """基于可见性与FIM增益的启发式波束/协作集合推荐"""
+    t = payload.get('time')
+    users = payload.get('users', [])
+    budget = payload.get('budget', {'beams_per_user': 2})
+
+    hint = {}
+    for user in users:
+        candidates = enumerate_visible_beams_and_sats(user, t)
+        scored = []
+        for cand in candidates:
+            fim_gain = estimate_fim_gain(user, cand, t)
+            snr = estimate_snr(user, cand, t)
+            geometry = estimate_geometry_diversity(user, cand, t)  # 抑制GDOP
+            score = 0.5*fim_gain + 0.3*snr + 0.2*geometry
+            scored.append((cand, score))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        k = budget.get('beams_per_user', 2)
+        hint[user['id']] = [c for c,_ in scored[:k]]
+    return hint
+```
+
+备注：可在 DSROQ 中引入 `beam_hint_score` 作为资源分配时的软约束或次级目标，触发轻量重路由/重分配。
+
+### 3.4 联合奖励与策略联动
+- 奖励扩展：在 `calculate_reward` 中加入 `lambda_pos*(1-CRLB_norm + 1-GDOP_norm)`；
+- 动作联动：当 `pos_quality` 低于阈值时，偏向 `DELAYED_ACCEPT/DEGRADED_ACCEPT`；
+- 资源联动：当 `beam_hint` 提示可显著改善定位质量时，触发 DSROQ 重分配。
+
 ## 3. 算法优化策略
 
 ### 3.1 多目标优化

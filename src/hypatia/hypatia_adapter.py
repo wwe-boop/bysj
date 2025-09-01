@@ -83,7 +83,7 @@ from ..core.state import NetworkState, FlowRequest, PositioningMetrics
 class HypatiaAdapter(HypatiaInterface):
     """Hypatia框架适配器"""
 
-    def __init__(self):
+    def __init__(self, backend_config: Optional[Dict[str, Any]] = None):
         self.logger = logging.getLogger(__name__)
 
         # Hypatia组件
@@ -104,13 +104,46 @@ class HypatiaAdapter(HypatiaInterface):
         self.simulation_start_time = 0.0
         self.temp_gen_dir = "/tmp/hypatia_temp"
 
+        # 后端模式
+        self.ns3_mode: str = "simplified"   # "real" | "simplified"
+
         # 简化实现标志
         self.use_simplified = not HYPATIA_AVAILABLE
+
+        # 应用外部后端配置（可选）
+        if backend_config is not None:
+            self._apply_backend_config(backend_config)
+
+    def _apply_backend_config(self, backend_config: Dict[str, Any]) -> None:
+        """应用后端模式配置（Hypatia/ns-3 切换与数据目录）。"""
+        try:
+            hypatia_mode = str(backend_config.get("hypatia_mode", "simplified")).lower()
+            ns3_mode = str(backend_config.get("ns3_mode", "simplified")).lower()
+            data_dir = backend_config.get("data_dir")
+
+            if data_dir:
+                self.temp_gen_dir = data_dir
+
+            # Hypatia 模式：当要求 real 且依赖可用时启用真实模式，否则回退简化
+            if hypatia_mode == "real" and HYPATIA_AVAILABLE:
+                self.use_simplified = False
+            else:
+                self.use_simplified = True
+
+            # ns-3 模式仅记录标志，实际接入由上层/适配层处理
+            if ns3_mode in ("real", "simplified"):
+                self.ns3_mode = ns3_mode
+        except Exception as e:
+            self.logger.warning(f"应用后端配置失败，使用默认设置: {e}")
         
-    def initialize(self, constellation_config: Dict[str, Any]) -> None:
+    def initialize(self, constellation_config: Dict[str, Any], backend_config: Optional[Dict[str, Any]] = None) -> None:
         """初始化Hypatia组件"""
         try:
             self.logger.info("初始化Hypatia适配器...")
+
+            # 按需覆盖运行时后端配置
+            if backend_config is not None:
+                self._apply_backend_config(backend_config)
 
             if self.use_simplified:
                 self.logger.info("使用简化实现（不依赖Hypatia）")

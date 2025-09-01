@@ -8,3 +8,4 @@
 ../07_system_impl.md
 ../08_ablation.md
 ../09_conclusion.md
+../reference/glossary.md

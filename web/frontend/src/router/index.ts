@@ -54,6 +54,15 @@ const routes: RouteRecordRaw[] = [
         }
       },
       {
+        path: '/drl-training',
+        name: 'DRLTraining',
+        component: () => import('@/views/DRLTraining.vue'),
+        meta: {
+          title: 'DRL训练',
+          icon: 'BrainFilled'
+        }
+      },
+      {
         path: '/positioning',
         name: 'Positioning',
         component: () => import('@/views/Positioning.vue'),
@@ -78,6 +87,15 @@ const routes: RouteRecordRaw[] = [
         meta: {
           title: '统计分析',
           icon: 'DataAnalysis'
+        }
+      },
+      {
+        path: '/experiments',
+        name: 'Experiments',
+        component: () => import('@/views/Experiments.vue'),
+        meta: {
+          title: '实验批跑',
+          icon: 'Operation'
         }
       }
     ]

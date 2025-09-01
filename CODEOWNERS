@@ -1,0 +1,26 @@
+# 全局代码所有者
+* @wwe-boop
+
+# 核心系统代码
+/src/ @wwe-boop
+/src/admission/ @wwe-boop
+/src/dsroq/ @wwe-boop
+/src/positioning/ @wwe-boop
+/src/simulation/ @wwe-boop
+
+# 设计文档
+/design/ @wwe-boop
+/docs/ @wwe-boop
+
+# Web界面
+/web/ @wwe-boop
+/web/backend/ @wwe-boop
+/web/frontend/ @wwe-boop
+
+# 实验和配置
+/experiments/ @wwe-boop
+/scripts/ @wwe-boop
+
+# 论文相关
+/论文.md @wwe-boop
+/调度系统.md @wwe-boop

@@ -99,6 +99,8 @@
 - **可视化**：Matplotlib, Plotly, Seaborn
 - **地理计算**：Cartopy, Geopy, Skyfield
 
+注：定位/协作定位方法与接口详见 `design/系统.md` 3.8 节，算法细节见 `design/algorithm_design.md` 第3章，实验方案见 `design/experiment_design.md` 第4章。
+
 ## 3. 数据流设计
 
 ### 3.1 实时决策流程

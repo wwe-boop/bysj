@@ -31,46 +31,73 @@
 - **DSROQ资源分配**: MCTS路由、李雅普诺夫优化、带宽分配
 - **性能监控**: 实时指标监控和分析
 - **场景管理**: 5个预定义仿真场景
+- **Web前端系统**: 完整的Vue.js前端界面
+- **后端API系统**: 完整的Flask REST API
+- **DRL训练界面**: 深度强化学习训练和监控
+- **实验批跑系统**: 批量实验、消融实验、统计分析
+
+## ✅ 对齐完成的设计文档章节
+- **3.2 DRL准入控制**: 状态/动作/奖励/训练功能完整实现
+- **3.6 实验与消融**: 批跑与统计分析系统完整实现
+- **3.7 Web/API与前端**: 基础功能齐全，支持实时监控
 
 ## 🚧 需要完善的模块
 
-### 前端系统 (Vue.js)
-- **状态**: 仅有Flask模板，需要完整Vue前端
+### Beam Hint与定位联动 (3.5节)
+- **状态**: 基础定位服务已实现，缺少Beam Hint算法
 - **要求**:
-  - Vue 3 + TypeScript + Vite
-  - Element Plus UI组件库
-  - 实时数据可视化 (Chart.js/ECharts)
-  - 3D卫星网络可视化 (Three.js/Cesium)
-  - WebSocket实时通信
+  - 基于可见性+FIM增益的Beam Hint打分
+  - 与DSROQ联动的重分配策略
+  - 定位质量触发机制
 
-### 后端API系统
-- **状态**: 基础Flask框架，缺少完整API路由
+### Hypatia真实数据管线 (3.4节)
+- **状态**: 使用简化适配器，需要真实Hypatia集成
 - **要求**:
-  - 完整的REST API (src/api/main.py)
-  - 准入控制API (/api/admission/*)
-  - 定位服务API (/api/positioning/*)
-  - 统计分析API (/api/statistics/*)
-  - WebSocket实时推送
+  - 真实TLE/ISL/GSL数据管线
+  - 可配置的真实/简化模式切换
+  - 与参考参数对齐的校准
 
-### Web系统架构
+### Web系统架构 (已完成)
 ```
 web/
-├── frontend/                 # Vue.js前端
+├── frontend/                    # Vue.js前端 ✅
 │   ├── src/
-│   │   ├── components/      # Vue组件
-│   │   ├── views/          # 页面视图
-│   │   ├── stores/         # Pinia状态管理
-│   │   ├── api/            # API接口
-│   │   └── utils/          # 工具函数
+│   │   ├── views/              # 页面视图 ✅
+│   │   │   ├── Layout.vue      # 主布局
+│   │   │   ├── Dashboard.vue   # 仪表板
+│   │   │   ├── Simulation.vue  # 仿真控制
+│   │   │   ├── DRLTraining.vue # DRL训练
+│   │   │   ├── Experiments.vue # 实验批跑
+│   │   │   └── ...            # 其他页面
+│   │   ├── components/         # Vue组件 ✅
+│   │   ├── stores/            # Pinia状态管理 ✅
+│   │   ├── api/               # API接口 ✅
+│   │   └── utils/             # 工具函数 ✅
 │   ├── package.json
 │   └── vite.config.ts
-├── backend/                 # Flask后端API
+├── backend/                    # Flask后端API ✅
 │   ├── src/api/
-│   │   ├── main.py         # API入口
-│   │   ├── routes/         # API路由
-│   │   └── websocket/      # WebSocket处理
+│   │   ├── main.py            # API入口 ✅
+│   │   ├── routes/            # API路由 ✅
+│   │   │   ├── simulation.py  # 仿真控制
+│   │   │   ├── admission.py   # 准入控制(含DRL)
+│   │   │   ├── experiments.py # 实验批跑
+│   │   │   └── ...           # 其他路由
+│   │   ├── websocket.py       # WebSocket处理 ✅
+│   │   └── middleware.py      # 中间件 ✅
 │   └── requirements.txt
-└── docker-compose.yml       # 容器化部署
+├── docker-compose.yml          # 容器化部署 ✅
+└── run_web_system.py          # 一键启动脚本 ✅
+```
+
+### 实验批跑系统架构 (新增)
+```
+src/experiments/                # 实验批跑模块 ✅
+├── batch_runner.py             # 批量实验运行器
+├── experiment_config.py        # 实验配置管理
+├── statistical_analysis.py    # 统计分析模块
+├── chart_generator.py          # 图表生成器
+└── __init__.py
 ```
 
 提示：如需进一步细化某一部分，请告诉我具体章节，我会在对应文档中继续完善。

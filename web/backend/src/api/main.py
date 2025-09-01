@@ -29,7 +29,8 @@ from .routes import (
     admission_bp,
     positioning_bp,
     statistics_bp,
-    scenarios_bp
+    scenarios_bp,
+    experiments_bp
 )
 from .websocket import SocketIOHandler
 from .middleware import setup_middleware
@@ -135,6 +136,7 @@ class APIServer:
         self.app.register_blueprint(positioning_bp, url_prefix='/api/positioning')
         self.app.register_blueprint(statistics_bp, url_prefix='/api/statistics')
         self.app.register_blueprint(scenarios_bp, url_prefix='/api/scenarios')
+        self.app.register_blueprint(experiments_bp, url_prefix='/api/experiments')
         
         # 错误处理
         @self.app.errorhandler(404)

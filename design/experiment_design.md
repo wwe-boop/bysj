@@ -314,9 +314,45 @@ class NetworkMetrics:
         return lost_packets / total_packets if total_packets > 0 else 0
 ```
 
-## 4. 实验场景设计
+## 4. 定位相关实验（新增）
 
-### 4.1 负载变化场景
+### 4.1 Beam Hint 有效性实验
+目的：验证协作定位提示对定位质量（CRLB/GDOP）与准入性能的影响。
+
+配置：
+- 对比组：无Hint、启发式Hint（3.3）、理想上界（上限FIM增益）
+- 预算：每用户可用波束数 {1,2,3}，功率/时隙限制固定
+- 负载：light/medium/heavy，星座：Starlink/Kuiper
+
+指标：
+- 定位：CRLB_norm、GDOP_norm、cooperation_gain、visible_beams_cnt、coop_sat_cnt
+- 业务：admission_rate、degradation_rate、delay_p95、QoE_mean、Jain公平性
+
+### 4.2 协作融合模型敏感性
+目的：不同测量集（TOA/TDOA/AOA）与权重对定位质量与业务指标的影响。
+
+配置：
+- 融合权重：w_TOA, w_TDOA, w_AOA ∈ simplex（栅格 or 贝叶斯优化）
+- 信噪比：SNR ∈ {5, 10, 15, 20} dB
+
+指标：
+- CRLB_norm/GDOP_norm 随参数变化的敏感性曲面；
+- QoE_mean 与 admission_rate 的协变关系。
+
+### 4.3 联动策略评估
+目的：定位质量退化时的策略联动效果（保守/延迟/降级接纳）。
+
+配置：
+- 触发阈值：pos_quality ∈ {0.3, 0.5, 0.7}
+- 动作集：binary_actions vs full_actions
+
+指标：
+- QoE_mean、admission_rate、violations、delay_p95；
+- 触发频率与代价（额外重分配次数）。
+
+## 5. 实验场景设计
+
+### 5.1 负载变化场景
 
 ```python
 LOAD_SCENARIOS = {
@@ -345,7 +381,7 @@ LOAD_SCENARIOS = {
 }
 ```
 
-### 4.2 故障场景
+### 5.2 故障场景
 
 ```python
 FAILURE_SCENARIOS = {
@@ -370,9 +406,9 @@ FAILURE_SCENARIOS = {
 }
 ```
 
-## 5. 消融实验设计
+## 6. 消融实验设计
 
-### 5.1 状态空间消融
+### 6.1 状态空间消融
 
 ```python
 ABLATION_STATE_CONFIGS = {
@@ -384,7 +420,7 @@ ABLATION_STATE_CONFIGS = {
 }
 ```
 
-### 5.2 奖励函数消融
+### 6.2 奖励函数消融
 
 ```python
 ABLATION_REWARD_CONFIGS = {
@@ -396,7 +432,7 @@ ABLATION_REWARD_CONFIGS = {
 }
 ```
 
-### 5.3 动作空间消融
+### 6.3 动作空间消融
 
 ```python
 ABLATION_ACTION_CONFIGS = {
@@ -409,7 +445,7 @@ ABLATION_ACTION_CONFIGS = {
 
 ---
 
-## 6. 统计检验与可视化示例
+## 7. 统计检验与可视化示例
 
 ### 6.1 统计检验
 - 置信区间：均值±t乘标准误；多次运行取n≥10

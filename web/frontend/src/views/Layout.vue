@@ -43,6 +43,10 @@
             <el-icon><Key /></el-icon>
             <template #title>准入控制</template>
           </el-menu-item>
+          <el-menu-item index="/drl-training">
+            <el-icon><BrainFilled /></el-icon>
+            <template #title>DRL训练</template>
+          </el-menu-item>
           <el-menu-item index="/positioning">
             <el-icon><Location /></el-icon>
             <template #title>定位服务</template>
@@ -57,6 +61,11 @@
         <el-menu-item index="/statistics">
           <el-icon><DataAnalysis /></el-icon>
           <template #title>统计分析</template>
+        </el-menu-item>
+
+        <el-menu-item index="/experiments">
+          <el-icon><Operation /></el-icon>
+          <template #title>实验批跑</template>
         </el-menu-item>
       </el-menu>
     </el-aside>
@@ -196,9 +205,11 @@ import {
   Share,
   Setting,
   Key,
+  BrainFilled,
   Location,
   Files,
   DataAnalysis,
+  Operation,
   Expand,
   Fold,
   CircleCheck,

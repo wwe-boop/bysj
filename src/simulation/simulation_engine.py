@@ -78,9 +78,9 @@ class SimulationEngine:
         try:
             self.logger.info("初始化仿真环境...")
             
-            # 1. 初始化Hypatia适配器
-            self.hypatia_adapter = HypatiaAdapter()
-            self.hypatia_adapter.initialize(self.config.constellation.__dict__)
+            # 1. 初始化Hypatia适配器（支持后端模式切换）
+            self.hypatia_adapter = HypatiaAdapter(self.config.backend.__dict__)
+            self.hypatia_adapter.initialize(self.config.constellation.__dict__, self.config.backend.__dict__)
             self.logger.info("✓ Hypatia适配器初始化完成")
             
             # 2. 初始化准入控制器

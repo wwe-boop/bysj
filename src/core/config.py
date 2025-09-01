@@ -177,6 +177,17 @@ class VisualizationConfig:
 
 
 @dataclass
+class BackendConfig:
+    """后端仿真后端配置"""
+    # Hypatia 集成模式：real 使用真实 Hypatia 管线；simplified 使用内置简化模型
+    hypatia_mode: str = "simplified"  # "real" | "simplified"
+    # ns-3 集成模式：real 预留对接真实 ns-3；simplified 使用内置 NS3Simulator 模拟
+    ns3_mode: str = "simplified"      # "real" | "simplified"
+    # 数据目录：TLE/ISL/GSL/动态状态等生成或读取目录
+    data_dir: str = "/tmp/hypatia_temp"
+
+
+@dataclass
 class SystemConfig:
     """完整系统配置"""
     constellation: ConstellationConfig = field(default_factory=ConstellationConfig)
@@ -188,6 +199,7 @@ class SystemConfig:
     simulation: SimulationConfig = field(default_factory=SimulationConfig)
     api: APIConfig = field(default_factory=APIConfig)
     visualization: VisualizationConfig = field(default_factory=VisualizationConfig)
+    backend: BackendConfig = field(default_factory=BackendConfig)
     
     # 联合优化权重
     qoe_weight: float = 0.6

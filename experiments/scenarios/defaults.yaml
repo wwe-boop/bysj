@@ -1,0 +1,50 @@
+# 默认场景清单（示例）
+
+scenarios:
+  - id: baseline_simplified
+    description: 基准场景，简化后端，默认负载与星座参数
+    overrides:
+      backend:
+        hypatia_mode: simplified
+        ns3_mode: simplified
+        data_dir: ./data
+      simulation:
+        duration_seconds: 1800
+        flow_arrival_rate: 10.0
+        num_users: 100
+      drl:
+        algorithm: PPO
+
+  - id: high_load_stress
+    description: 高负载压测，观察准入率、时延与公平性变化
+    overrides:
+      simulation:
+        flow_arrival_rate: 25.0
+        num_users: 300
+      resource_allocation:
+        algorithm: DSROQ
+      dsroq:
+        mcts_iterations: 1200
+        lyapunov_weight: 1.2
+
+  - id: positioning_ablation
+    description: 关闭定位权重，做定位协同消融
+    overrides:
+      positioning:
+        crlb_weight: 0.0
+        gdop_weight: 0.0
+        coverage_weight: 0.0
+      qoe_weight: 1.0
+      positioning_weight: 0.0
+
+  - id: real_hypatia_smoke
+    description: 切换 Hypatia real 模式的冒烟（需本机已安装 Hypatia）
+    overrides:
+      backend:
+        hypatia_mode: real
+        ns3_mode: simplified
+        data_dir: /abs/path/to/hypatia_outputs
+      simulation:
+        duration_seconds: 600
+
+

@@ -43,6 +43,41 @@ def process_positioning_request():
         
         # 获取仿真引擎
         from ..routes.simulation import _simulation_engine
+@positioning_bp.route('/beam_hint', methods=['POST'])
+def get_beam_hint():
+    """生成 Beam Hint（基于可见性/FIM代理/SINR/几何多样性）。"""
+    try:
+        payload = request.get_json() or {}
+        users = payload.get('users', [])
+        budget = payload.get('budget', {})
+
+        # 获取仿真引擎
+        from ..routes.simulation import _simulation_engine
+        if not _simulation_engine:
+            return jsonify({'success': False, 'error': '仿真引擎未启动'}), 503
+
+        # 获取当前网络状态与定位计算器
+        network_state = _simulation_engine.current_network_state
+        positioning_calculator = _simulation_engine.positioning_calculator
+        if not network_state or not positioning_calculator:
+            return jsonify({'success': False, 'error': '网络/定位模块不可用'}), 503
+
+        from src.positioning.beam_hint import generate_beam_hint_with_state
+
+        hint = generate_beam_hint_with_state(
+            time_s=_simulation_engine.current_time,
+            users=users,
+            budget=budget,
+            network_state=network_state,
+            positioning_calculator=positioning_calculator,
+        )
+
+        return jsonify({'success': True, 'data': hint})
+
+    except Exception as e:
+        logger.error(f"获取 Beam Hint 失败: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
         if not _simulation_engine:
             return jsonify({
                 'success': False,

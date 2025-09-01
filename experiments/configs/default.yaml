@@ -1,0 +1,110 @@
+# 系统默认配置（可作为本地覆盖的模板）
+
+constellation:
+  name: starlink
+  num_orbits: 72
+  num_sats_per_orbit: 22
+  altitude_km: 550.0
+  inclination_deg: 53.0
+  eccentricity: 0.0
+  arg_of_perigee_deg: 0.0
+  mean_motion_rev_per_day: 15.19
+
+admission:
+  algorithm: DRL  # DRL | threshold | random
+  max_users_per_satellite: 100
+  min_signal_strength_dbm: -120.0
+  max_latency_threshold_ms: 50.0
+  min_bandwidth_threshold_mbps: 1.0
+  use_positioning_aware: true
+  positioning_weight: 0.3
+  qos_weight: 0.7
+
+resource_allocation:
+  algorithm: DSROQ  # DSROQ | proportional | equal
+  fairness_factor: 0.5
+  efficiency_factor: 0.5
+  min_allocation_mbps: 0.5
+  max_allocation_mbps: 10.0
+
+drl:
+  algorithm: PPO
+  learning_rate: 0.0003
+  batch_size: 64
+  buffer_size: 100000
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  entropy_coef: 0.01
+  value_function_coef: 0.5
+  max_grad_norm: 0.5
+  n_epochs: 10
+  n_steps: 2048
+  device: cpu   # cpu | cuda
+  state_dim: 128
+  action_dim: 5
+  total_timesteps: 1000000
+  eval_freq: 10000
+  save_freq: 50000
+  log_interval: 1000
+
+dsroq:
+  mcts_iterations: 1000
+  mcts_exploration_constant: 1.414
+  mcts_max_depth: 10
+  lyapunov_weight: 1.0
+  queue_weight: 1.0
+  utility_weight: 1.0
+  min_bandwidth_mbps: 1.0
+  max_bandwidth_mbps: 100.0
+  bandwidth_granularity: 0.1
+
+positioning:
+  signal_power_dbm: -130.0
+  noise_power_dbm: -140.0
+  carrier_frequency_hz: 2.4e9
+  bandwidth_hz: 20000000.0
+  elevation_mask_deg: 10.0
+  max_range_km: 2000.0
+  crlb_weight: 0.4
+  gdop_weight: 0.3
+  coverage_weight: 0.3
+
+simulation:
+  duration_seconds: 3600.0
+  time_step_seconds: 1.0
+  random_seed: 42
+  flow_arrival_rate: 10.0
+  flow_duration_mean: 60.0
+  flow_duration_std: 20.0
+  num_users: 100
+  user_distribution: uniform  # uniform | clustered | realistic
+
+api:
+  host: 0.0.0.0
+  port: 5000
+  debug: true
+  cors_enabled: true
+  rate_limit: "100/minute"
+  database_url: "sqlite:///leo_system.db"
+  redis_url: "redis://localhost:6379/0"
+
+visualization:
+  frontend_port: 3000
+  cesium_ion_token: ""
+  update_interval_ms: 1000
+  max_data_points: 1000
+  satellite_scale: 1000.0
+  orbit_opacity: 0.3
+  link_opacity: 0.5
+
+backend:
+  hypatia_mode: simplified
+  ns3_mode: simplified
+  data_dir: ./data
+
+# 联合优化权重
+qoe_weight: 0.6
+positioning_weight: 0.4
+
+
