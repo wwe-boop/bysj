@@ -2,14 +2,14 @@
 
 ## 项目概述
 
-本项目面向“融合定位 + 智能调度”一体化目标，基于DSROQ与Hypatia框架进行扩展创新：
-- 在资源受限、动态拓扑的LEO网络中，构建“准入-分配-定位协同”的分层决策系统
+本项目面向"融合定位 + 智能调度"一体化目标，基于DSROQ与Hypatia框架进行扩展创新：
+- 在资源受限、动态拓扑的LEO网络中，构建"准入-分配-定位协同"的分层决策系统
 - 引入融合定位（参考 reference/2404.01148v1.pdf）作为核心模块，与调度/准入共同驱动全局优化
 - 以QoE与定位精度（CRLB/GDOP等）为联合目标，进行实时、长期的联合优化
 
 ## 核心创新点
 
-1. 融合定位 × 智能调度：提出“定位质量 × QoE”的联合优化范式
+1. 融合定位 × 智能调度：提出"定位质量 × QoE"的联合优化范式
 2. DRL实时准入控制：细粒度动作（接受/拒绝/降级/延迟/部分）+ 时间感知状态
 3. 准入-分配-定位协同：分层架构将准入、路由/带宽、定位指标联动优化
 4. Hypatia高保真仿真：嵌入定位指标计算（CRLB/GDOP），实现端到端评估
@@ -31,15 +31,15 @@ Hypatia ns3-sat-sim层 (包级仿真)
 ## 目录结构
 
 ```
-LEO-QoE-AdmissionControl/
+bysj/
 ├── docs/                     # 论文文档
 ├── design/                   # 系统设计文档
-├── hypatia/                  # Hypatia框架 (git submodule)
 ├── src/                      # 系统核心代码
 ├── experiments/              # 实验配置与结果
 ├── data/                     # 数据管理
 ├── reference/                # 文献管理
 ├── deploy/                   # 部署配置
+├── web/                      # Web界面
 └── tests/                    # 测试代码
 ```
 
@@ -54,24 +54,16 @@ LEO-QoE-AdmissionControl/
 
 1. 克隆项目
 ```bash
-git clone --recursive https://github.com/your-repo/LEO-QoE-AdmissionControl.git
-cd LEO-QoE-AdmissionControl
+git clone https://github.com/wwe-boop/bysj.git
+cd bysj
 ```
 
-2. 安装Hypatia依赖
-```bash
-cd hypatia
-bash hypatia_install_dependencies.sh
-bash hypatia_build.sh
-cd ..
-```
-
-3. 安装项目依赖
+2. 安装项目依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-4. 运行测试
+3. 运行测试
 ```bash
 python -m pytest tests/
 ```
@@ -95,21 +87,6 @@ python experiments/run_baselines.py
 - [算法设计](design/algorithm_design.md) - DRL算法和DSROQ集成
 - [实验设计](design/experiment_design.md) - 实验方案和评估指标
 - [图表生成指南](docs/guides/figure_generation.md) - 论文图表生成方法
-- [部署指南](deploy/deployment_guide.md) - 部署和运维指南
-
-## PDF 编译（Pandoc + XeLaTeX）
-
-前置：安装 pandoc、TeXLive（含 xelatex）、中文字体（推荐 Noto CJK）。
-
-```bash
-# 生成论文 PDF
-bash docs/latex/build.sh
-# 输出位置：docs/latex/thesis.pdf
-```
-
-如需自定义章节顺序与元数据：
-- 章节清单：`docs/latex/chapters.txt`
-- 元数据：`docs/latex/metadata.yaml`
 
 ## 贡献指南
 
@@ -123,24 +100,9 @@ bash docs/latex/build.sh
 
 本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
 
-## 引用
-
-如果您在研究中使用了本项目，请引用：
-
-```bibtex
-@misc{leo-qoe-admission-control,
-  title={面向低轨卫星互联网的智能准入与联合调度-协作定位一体化系统},
-  author={Your Name},
-  year={2025},
-  url={https://github.com/your-repo/LEO-QoE-AdmissionControl}
-}
-```
-
 ## 联系方式
 
-- 作者：[Your Name]
-- 邮箱：[your.email@example.com]
-- 项目链接：[https://github.com/your-repo/LEO-QoE-AdmissionControl]
+- 项目链接：[https://github.com/wwe-boop/bysj]
 
 ---
 
@@ -148,4 +110,4 @@ bash docs/latex/build.sh
 - 允许在参考列表或 `reference/` 目录中保留外部研究的链接/DOI/编号；
 - 正文与设计类文档不直接出现具体论文题名与作者姓名，仅总结方法脉络与共性结论；
 - 图表与结果若借鉴外部结论，需在参考中可追溯，但正文避免显名；
-- 对比或综述建议采用“近年会议工作/代表性方法”等匿名化表述。
+- 对比或综述建议采用"近年会议工作/代表性方法"等匿名化表述。
