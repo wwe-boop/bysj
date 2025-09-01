@@ -42,11 +42,16 @@ Hypatia适配器
 """
 
 import logging
-import numpy as np
 import os
 import sys
 from typing import Dict, List, Tuple, Any, Optional
 import time
+
+try:
+    import numpy as np
+except ImportError:
+    logging.warning("numpy未安装，某些功能可能受限")
+    np = None
 
 # 添加Hypatia路径
 hypatia_path = os.path.join(os.path.dirname(__file__), '..', '..', 'hypatia')
@@ -66,18 +71,31 @@ try:
     from satgen.tles.read_tles import read_tles
     from satgen.tles.generate_tles_from_scratch import generate_tles_from_scratch_manual
     from satgen.ground_stations.read_ground_stations import read_ground_stations_extended
-    from satgen.ground_stations.extend_ground_stations import generate_ground_stations_cities_sorted_by_estimated_2025_pop_top_100
+    from satgen.ground_stations.extend_ground_stations import extend_ground_stations
     from satgen.isls.read_isls import read_isls
     from satgen.isls.generate_plus_grid_isls import generate_plus_grid_isls
     from satgen.interfaces.read_gsl_interfaces_info import read_gsl_interfaces_info
     from satgen.dynamic_state.generate_dynamic_state import generate_dynamic_state_algorithm_free_one_only_over_isls
     HYPATIA_AVAILABLE = True
+    logging.info("成功导入Hypatia模块")
 except ImportError as e:
     logging.warning(f"无法导入Hypatia模块: {e}，将使用简化实现")
     HYPATIA_AVAILABLE = False
 
-from ..core.interfaces import HypatiaInterface
-from ..core.state import NetworkState, FlowRequest, PositioningMetrics
+try:
+    from ..core.interfaces import HypatiaInterface
+    from ..core.state import NetworkState, FlowRequest, PositioningMetrics
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    import sys
+    import os
+    src_path = os.path.join(os.path.dirname(__file__), '..', '..')
+    if src_path not in sys.path:
+        sys.path.append(src_path)
+
+    from core.interfaces import HypatiaInterface
+    from core.state import NetworkState, FlowRequest, PositioningMetrics
+from .constellation import ConstellationManager
 
 
 class HypatiaAdapter(HypatiaInterface):
@@ -113,6 +131,47 @@ class HypatiaAdapter(HypatiaInterface):
         # 应用外部后端配置（可选）
         if backend_config is not None:
             self._apply_backend_config(backend_config)
+
+        # 星座管理器（用于简化模式与 TLE 集成）
+        self.constellation_manager: Optional[ConstellationManager] = None
+
+# 兜底：真实 Hypatia 路径下所需的方法占位，避免未定义告警
+
+def calculate_satellite_position(sat: Any, time_since_epoch_ns: int) -> Tuple[float, float, float, float, float, float]:
+    """占位计算：返回 (lat, lon, alt_m, x_m, y_m, z_m)。
+    在未集成真实 Hypatia 时不应调用此路径。"""
+    return 0.0, 0.0, 550000.0, 0.0, 0.0, 0.0
+
+
+class HypatiaAdapter(HypatiaInterface):
+    """Hypatia仿真引擎适配器
+
+    提供与Hypatia仿真引擎的接口，支持：
+    - 卫星轨道计算
+    - 网络拓扑生成
+    - 动态状态更新
+    - 链路质量评估
+    """
+
+    def __init__(self, config: Dict[str, Any]):
+        """初始化Hypatia适配器
+
+        Args:
+            config: 配置字典，包含Hypatia相关参数
+        """
+        self.config = config
+        self.satellites = []
+        self.ground_stations = []
+        self.isls = []
+        self.current_time = 0
+        self.simulation_duration = config.get('simulation_duration', 3600)  # 默认1小时
+        self.time_step = config.get('time_step', 1000)  # 默认1秒
+
+        # 初始化Hypatia组件
+        if HYPATIA_AVAILABLE:
+            self._initialize_hypatia()
+        else:
+            self._initialize_simplified()
 
     def _apply_backend_config(self, backend_config: Dict[str, Any]) -> None:
         """应用后端模式配置（Hypatia/ns-3 切换与数据目录）。"""
@@ -237,14 +296,18 @@ class HypatiaAdapter(HypatiaInterface):
         gs_filename = os.path.join(self.temp_gen_dir, "ground_stations.txt")
 
         # 生成地面站文件
-        generate_ground_stations_cities_sorted_by_estimated_2025_pop_top_100(
-            gs_filename,
-            len(major_cities)
-        )
+        self._generate_ground_stations_file(gs_filename, major_cities)
 
         # 读取地面站信息
         self.ground_stations = read_ground_stations_extended(gs_filename)
         self.logger.info(f"生成了{len(self.ground_stations)}个地面站")
+
+    def _generate_ground_stations_file(self, filename: str, cities: List[Tuple[str, float, float]]) -> None:
+        """生成地面站文件"""
+        with open(filename, 'w') as f:
+            for i, (name, lat, lon) in enumerate(cities):
+                # 格式: id,name,latitude_degrees,longitude_degrees,elevation_m_over_sea_level
+                f.write(f"{i},{name},{lat},{lon},0.0\n")
 
     def _generate_isls(self, config: Dict[str, Any]) -> None:
         """生成星间链路"""
@@ -318,11 +381,9 @@ class HypatiaAdapter(HypatiaInterface):
 
     def _initialize_simplified(self, constellation_config: Dict[str, Any]) -> None:
         """简化初始化（不依赖Hypatia）"""
-        # 生成简化的卫星星座
-        self._generate_simplified_constellation(constellation_config)
-
-        # 生成简化的ISL
-        self._generate_simplified_isls()
+        # 使用 ConstellationManager（支持 use_tle）统一管理卫星与拓扑
+        self.constellation_manager = ConstellationManager(constellation_config)
+        self.constellation_manager.initialize()
 
         self.logger.info("简化初始化完成")
 
@@ -464,7 +525,16 @@ class HypatiaAdapter(HypatiaInterface):
         self.current_time = time_step
 
         if self.use_simplified:
-            satellite_positions = self._calculate_simplified_positions(time_step)
+            if self.constellation_manager is None:
+                # 兜底：若意外未初始化，按旧逻辑计算
+                satellite_positions = self._calculate_simplified_positions(time_step)
+                topology = self._calculate_topology_matrix(satellite_positions, time_step)
+                links = self._calculate_link_states(satellite_positions, time_step)
+            else:
+                # 通过 ConstellationManager（支持 TLE）获取
+                satellite_positions = self.constellation_manager.get_satellite_positions(time_step)
+                topology = self.constellation_manager.get_topology_matrix(time_step)
+                links = self.constellation_manager.get_link_states(time_step)
         else:
             # 计算当前时刻的卫星位置
             time_since_epoch_ns = int(time_step * 1000 * 1000 * 1000)
@@ -487,11 +557,11 @@ class HypatiaAdapter(HypatiaInterface):
                 }
                 satellite_positions.append(satellite_info)
 
-        # 计算拓扑矩阵
-        topology = self._calculate_topology_matrix(satellite_positions, time_step)
-
-        # 计算链路状态
-        links = self._calculate_link_states(satellite_positions, time_step)
+        if not self.use_simplified:
+            # 计算拓扑矩阵（真实Hypatia路径）
+            topology = self._calculate_topology_matrix(satellite_positions, time_step)
+            # 计算链路状态
+            links = self._calculate_link_states(satellite_positions, time_step)
 
         # 简化的链路利用率和容量（实际应该从ns3仿真获取）
         link_utilization = {}
@@ -754,7 +824,7 @@ class HypatiaAdapter(HypatiaInterface):
         
         return min(1.0, max(0.0, coverage_quality))
 
-    def _calculate_topology_matrix(self, satellites: List[Dict[str, Any]], time_step: float) -> np.ndarray:
+    def _calculate_topology_matrix(self, satellites: List[Dict[str, Any]], time_step: float):
         """计算网络拓扑矩阵"""
         n_sats = len(satellites)
         topology = np.zeros((n_sats, n_sats), dtype=int)

@@ -146,6 +146,22 @@ export const useWebSocketStore = defineStore('websocket', {
         console.log('连接确认:', data)
       })
 
+      // 消融/批量实验实时事件
+      this.socket.on('ablation_completed', (data) => {
+        const appStore = useAppStore()
+        appStore.addNotification({ type: 'success', title: '消融完成', message: `ID: ${data.experiment_id}` })
+      })
+      this.socket.on('batch_experiment_completed', (data) => {
+        const appStore = useAppStore()
+        appStore.addNotification({ type: 'success', title: '批量实验完成', message: `ID: ${data.experiment_id}` })
+      })
+
+      // Beam Hint 实时事件
+      this.socket.on('beam_hint_update', (payload) => {
+        // 可在此处分发到专用的 store 或事件总线
+        console.log('Beam Hint 更新', payload)
+      })
+
       this.socket.on('simulation_update', (data) => {
         simulationStore.updateStatus({
           currentTime: data.current_time,

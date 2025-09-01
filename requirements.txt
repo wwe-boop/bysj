@@ -8,3 +8,4 @@ requests>=2.31
 stable-baselines3>=2.3
 # plotting backend (headless)
 fonttools>=4.39
+skyfield>=1.46

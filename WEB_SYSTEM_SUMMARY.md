@@ -79,7 +79,7 @@ web/
 ### 4. 定位服务 (Positioning)
 - **参数配置**: 仰角掩码、GDOP阈值等
 - **定位测试**: 指定位置的定位质量测试
-- **质量查询**: 查询特定位置的定位质量
+- **指标查询**: 查询特定位置或用户集合的定位指标（Apos/CRLB/GDOP等）
 - **统计信息**: 定位精度、覆盖率等统计
 - **覆盖分析**: 全球定位覆盖范围分析
 
@@ -150,8 +150,8 @@ npm run dev
 - `GET /api/admission/statistics` - 获取准入统计
 
 ### 定位服务
-- `POST /api/positioning/request` - 处理定位请求
-- `GET /api/positioning/quality` - 获取定位质量
+- `GET /api/positioning/metrics` - 获取定位指标
+- `POST /api/positioning/beam_hint` - 获取波束候选
 
 ### 网络状态
 - `GET /api/network/state` - 获取网络状态
@@ -183,3 +183,25 @@ npm run dev
 4. **监控**: 集成Prometheus和Grafana
 
 这个Web系统为您的LEO卫星网络仿真研究提供了完整的可视化界面和控制平台，大大提升了系统的可用性和研究效率。
+
+## 端点-数据结构映射（补充）
+
+| 端点 | 关键请求字段 | 关键响应字段 | 相关章节 |
+| --- | --- | --- | --- |
+| `POST /api/admission/request` | `flows[]`, `profiles.weights`, `constraints.{lambda_pos,seam_penalty,reroute_cooldown_ms,beam_hint}` | `decision`, `accepted_flows[]`, `policies` | 第3.2.3/第4章 |
+| `GET /api/positioning/metrics` | `time`, `users[]` | `apos`, `crlb_mean/p95`, `gdop_mean/p95` | 第5章 |
+| `POST /api/positioning/beam_hint` | `time`, `users[]`, `budget` | 每用户`candidates[]` | 第5章 |
+| `GET /api/network/topology` | - | 拓扑/可见性视图 | 第3.3.1 |
+| `POST /api/simulation/start` | 场景/模式参数 | 运行状态/会话ID | 第6.8 |
+
+字段命名应与 `docs/03_system_design.md` 中“接口契约总览”保持一致，便于前后端与实验脚本共享同一Schema。
+
+## 容错/降级演示说明（补充）
+
+- 目的：复现实效保护策略（第3.2.2），在模块异常或资源紧张时降级到“阈值准入+启发式调度”。
+- 建议演示路径：
+  1. 通过 `POST /api/simulation/start` 传入模式参数（示例：`{"admission_mode":"drl|threshold", "scheduler_mode":"dsroq|heuristic"}`）。
+  2. 切换到 `threshold+heuristic` 后，对比 QoE/AR/Jain/Util/Delay 与 `drl+dsroq` 的差异。
+  3. 在前端显示明显的模式标记与状态提示，防止结果误读。
+
+注：上述为文档级接口建议，用于对齐论文与系统演示，不限定具体实现。

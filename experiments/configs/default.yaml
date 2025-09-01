@@ -9,6 +9,8 @@ constellation:
   eccentricity: 0.0
   arg_of_perigee_deg: 0.0
   mean_motion_rev_per_day: 15.19
+  use_tle: true
+  tle_file: ./data/constellations/starlink.tle
 
 admission:
   algorithm: DRL  # DRL | threshold | random

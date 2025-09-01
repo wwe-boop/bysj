@@ -44,6 +44,13 @@ flowchart TD
 - 仿真环境：Hypatia（satgenpy/ns3-sat-sim）封装与统一API。
 - 可视化与监控：Cesium 3D、指标看板、日志与追踪。
 
+## 3.3.1 接触计划与时间扩展图建模（新增）
+
+- 接触计划（Visibility/Contact Plan）：由 `Hypatia` 产生卫星-地面/卫星-卫星的可见性窗口、仰角、Doppler与带宽上限，供状态提取与路由代价计算使用。
+- 时间扩展图（Time-Expanded Graph, TEG）：以时间步Δτ离散化网络，节点复制为 \( V_t \)，边带时间依赖代价 \( c_t(e) \) 与可用性指示 \( a_t(e)\in\{0,1\} \)。
+- seam与重路由惩罚：跨缝边附加代价 \( \kappa_{seam} \)；路径变更惩罚/冷却 \( \kappa_{chg},\ T_{cool} \) 以限制重路由频率，提升路由寿命与稳定性。
+- 模块落点：TEG构造在 `src/hypatia/network_state.py`；代价与惩罚在 `src/dsroq/mcts_routing.py` 与 `src/dsroq/core.py` 中实现，可配置注入到李雅普诺夫优化的权重项。
+
 ## 3.4 技术路线选择
 
 - 后端：Python + Hypatia + PyTorch + Stable-Baselines3 + SimPy
@@ -80,3 +87,63 @@ flowchart TD
 - 状态特征：CRLB/GDOP、可见波束数、协作卫星数、平均/最小SINR、波束调度提示（Beam Hint）。
 - 接口对接：`Hypatia→Positioning` 模块产出定位质量向量，经 `State Extractor` 归一化后拼接进DRL状态；同时在 `Evaluation` 汇总“定位可用性”等指标。
 - 协同策略：在资源紧张时优先保证高定位需求业务的可用性；当定位质量退化时，触发保守接纳或延迟接纳策略，与DSROQ重分配联动。
+
+### 3.2.3 接口契约总览（新增）
+
+- 核心思想：上层准入向下层DSROQ输出“集合+画像+约束”三要素；定位模块提供`Apos/CRLB/GDOP/Beam Hint`等服务性信号。
+
+接口示例（Admission → DSROQ）：
+```json
+{
+  "flows": [
+    {
+      "id": "u1",
+      "class": "EF",
+      "demand_mbps": 5.0,
+      "latency_ms": 50,
+      "duration_s": 120,
+      "position": {"lat": 39.9, "lon": 116.4}
+    }
+  ],
+  "profiles": {
+    "weights": {"EF": 1.2, "AF": 1.0, "BE": 0.7},
+    "lambda_pos": 0.2
+  },
+  "constraints": {
+    "seam_penalty": 0.5,
+    "reroute_cooldown_ms": 5000,
+    "min_visible_beams": 2,
+    "min_coop_sats": 2,
+    "crlb_threshold": 50,
+    "beam_hint": [
+      {"user_id": "u1", "candidates": ["b12", "b45"]}
+    ]
+  }
+}
+```
+
+与Web端点的对齐（文档级映射）：
+- 准入：`POST /api/admission/request`（提交`flows/profiles/constraints`）。
+- 定位指标：`GET /api/positioning/metrics`（查询`Apos/CRLB/GDOP`聚合）。
+- 波束提示：`POST /api/positioning/beam_hint`（获取每用户的候选波束集合）。
+- 网络视图：`GET /api/network/topology`（供TEG/可视性可视化）。
+
+补充说明：`/api/positioning/metrics` 同时支持 `POST` 以 JSON 体提交复杂查询（与本节字段命名严格一致）。
+
+## 3.6 实现落点索引表（新增）
+
+| 模块 | 文档关键点 | 实现落点 | 相关Web端点 |
+| --- | --- | --- | --- |
+| Hypatia/网络状态 | 接触计划、TEG节点/边 | `src/hypatia/network_state.py` | `GET /api/network/topology` |
+| DSROQ-路由 | 跨缝惩罚、路径代价 | `src/dsroq/mcts_routing.py` |（内部计算）|
+| DSROQ-调度 | 李雅普诺夫与重分配 | `src/dsroq/core.py` | `POST /api/simulation/start`（触发流程）|
+| 准入控制 | DRL/PPO环境与策略 | `src/admission/*` | `POST /api/admission/request` |
+| 定位协同 | Apos/CRLB/GDOP/Beam Hint | `src/positioning/` | `GET /api/positioning/metrics`, `POST /api/positioning/beam_hint` |
+
+说明：以上为文档级索引与“文件名导航”，帮助读者从设计跳转到实现与端点；不约束内部具体实现细节，具体以仓库实际实现为准。
+
+### 工程端点补充（选读）
+
+- `GET /api/network/state`：工程态的聚合状态视图（便于调试与展示）。
+- `GET /api/statistics`：工程态的统计聚合端点（可选实现）。
+- `GET /api/scenarios/*`：场景列表与详情（便于前端交互）。

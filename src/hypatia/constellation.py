@@ -9,6 +9,13 @@ import numpy as np
 import logging
 from typing import Dict, List, Tuple, Any, Optional
 import math
+from pathlib import Path
+
+try:
+    from ..utils.tle_loader import TLELoader
+    HAS_TLE = True
+except Exception:
+    HAS_TLE = False
 
 
 class ConstellationManager:
@@ -26,7 +33,12 @@ class ConstellationManager:
         self.inclination_deg = config.get('inclination_deg', 53.0)
         self.eccentricity = config.get('eccentricity', 0.0)
         
-        # 计算轨道参数
+        # TLE 相关配置
+        self.use_tle: bool = bool(config.get('use_tle', False)) and HAS_TLE
+        self.tle_file: Optional[str] = config.get('tle_file')
+        self.tle_loader: Optional[TLELoader] = None
+
+        # 计算轨道参数（当未启用 TLE 或解析失败时使用简化模型）
         self.earth_radius_km = 6371.0
         self.orbital_radius_km = self.earth_radius_km + self.altitude_km
         self.orbital_period_sec = self._calculate_orbital_period()
@@ -36,18 +48,36 @@ class ConstellationManager:
         self.current_time = 0.0
         
         self.logger.info(f"初始化星座: {self.name}, {self.num_orbits}轨道, "
-                        f"每轨道{self.num_sats_per_orbit}颗卫星, 高度{self.altitude_km}km")
+                         f"每轨道{self.num_sats_per_orbit}颗卫星, 高度{self.altitude_km}km, "
+                         f"use_tle={self.use_tle}")
     
     def initialize(self) -> None:
         """初始化卫星星座"""
         self.satellites = []
-        
+
+        # 若启用 TLE，尝试加载
+        if self.use_tle and self.tle_file:
+            try:
+                tle_path = Path(self.tle_file)
+                if not tle_path.exists():
+                    self.logger.warning(f"TLE 文件不存在: {tle_path}，回退到简化星座")
+                else:
+                    self.tle_loader = TLELoader(str(tle_path))
+                    num_loaded = self.tle_loader.load()
+                    self.logger.info(f"TLE 加载完成，共 {num_loaded} 颗卫星")
+                    # 使用 TLE 驱动位置更新，不再预生成简化卫星清单
+                    return
+            except Exception as e:
+                self.logger.warning(f"TLE 加载失败，回退到简化星座: {e}")
+                self.tle_loader = None
+
+        # 简化模型：根据星座参数生成
         for orbit_idx in range(self.num_orbits):
             for sat_idx in range(self.num_sats_per_orbit):
                 satellite = self._create_satellite(orbit_idx, sat_idx)
                 self.satellites.append(satellite)
-        
-        self.logger.info(f"创建了{len(self.satellites)}颗卫星")
+
+        self.logger.info(f"创建了{len(self.satellites)}颗卫星（简化模型）")
     
     def _create_satellite(self, orbit_idx: int, sat_idx: int) -> Dict[str, Any]:
         """创建单颗卫星"""
@@ -96,6 +126,30 @@ class ConstellationManager:
     
     def _update_satellite_positions(self) -> None:
         """更新所有卫星的位置"""
+        # 若使用 TLE：直接由 TLE 位置覆盖
+        if self.use_tle and self.tle_loader is not None:
+            tle_positions = self.tle_loader.positions_at_time(self.current_time)
+            # 简化：将 TLE 返回的顺序作为 id 映射
+            self.satellites = []
+            for idx, p in enumerate(tle_positions):
+                satellite = {
+                    'id': idx,
+                    'orbit_idx': 0,
+                    'sat_idx': idx,
+                    'altitude_km': p['alt'],
+                    'inclination_deg': self.inclination_deg,
+                    'raan_deg': 0.0,
+                    'mean_anomaly_deg': 0.0,
+                    'eccentricity': self.eccentricity,
+                    'lat': p['lat'],
+                    'lon': p['lon'],
+                    'alt': p['alt'],
+                    'velocity_kmps': self._calculate_orbital_velocity(),
+                    'active': True
+                }
+                self.satellites.append(satellite)
+            return
+
         for satellite in self.satellites:
             # 计算当前时刻的平近点角
             mean_motion = 2 * math.pi / self.orbital_period_sec  # rad/s

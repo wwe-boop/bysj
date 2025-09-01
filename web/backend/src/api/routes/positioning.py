@@ -3,7 +3,7 @@
 """
 
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from marshmallow import Schema, fields, ValidationError
 
 positioning_bp = Blueprint('positioning', __name__)
@@ -43,6 +43,20 @@ def process_positioning_request():
         
         # 获取仿真引擎
         from ..routes.simulation import _simulation_engine
+
+        # 这里应该有更多的实现代码
+        return jsonify({
+            'success': True,
+            'message': '定位服务功能待实现'
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @positioning_bp.route('/beam_hint', methods=['POST'])
 def get_beam_hint():
     """生成 Beam Hint（基于可见性/FIM代理/SINR/几何多样性）。"""
@@ -71,6 +85,17 @@ def get_beam_hint():
             network_state=network_state,
             positioning_calculator=positioning_calculator,
         )
+
+        # 实时推送 Beam Hint 更新（可选）
+        try:
+            socketio = current_app.extensions.get('socketio')
+            if socketio:
+                socketio.emit('beam_hint_update', {
+                    'timestamp': _simulation_engine.current_time,
+                    'data': hint
+                }, broadcast=True)
+        except Exception as _:
+            pass
 
         return jsonify({'success': True, 'data': hint})
 

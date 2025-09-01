@@ -24,6 +24,9 @@ class ConstellationConfig:
     eccentricity: float = 0.0
     arg_of_perigee_deg: float = 0.0
     mean_motion_rev_per_day: float = 15.19
+    # TLE 配置
+    use_tle: bool = False
+    tle_file: Optional[str] = None
 
     @property
     def num_satellites(self) -> int:

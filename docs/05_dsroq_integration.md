@@ -1,5 +1,10 @@
 # 第5章 协作定位（匿名化参考B）
 
+## 本章贡献（速览）
+
+- 将协作定位质量（CRLB/GDOP）与可用性指标系统性注入策略层与执行层，形成网络-定位协同的通用接口。
+- 提出基于定位与可见性特征的Beam Hint与可行域约束，支撑准入与DSROQ代价的统一建模与优化。
+- 给出可复现实验设计：Apos/CRLB/GDOP与网络指标联合报告、消融与敏感性分析全链条。
 ## 5.1 概述与目标
 
 - 目标：在LEO多波束/多卫星协作环境中提升定位质量与可用性（以CRLB/GDOP为核心指标），同时与网络准入-分配联动，形成系统级协同。
@@ -52,5 +57,47 @@
 
 ---
 
+## 5.9 TEG与代价注入配置示例（新增）
+
+如下为面向路由/调度的配置示例（文档级）：
+
+```json
+{
+  "routing": {
+    "time_step_s": 1,
+    "seam_penalty": 0.5,
+    "path_change_penalty": 0.2,
+    "reroute_cooldown_ms": 5000
+  },
+  "positioning": {
+    "lambda_pos": 0.2,
+    "crlb_threshold": 50,
+    "min_visible_beams": 2,
+    "min_coop_sats": 2
+  },
+  "scheduling": {
+    "lyapunov_weight": 1.0,
+    "queue_backlog_limit": 10000
+  }
+}
+```
+
+输出-指标对齐建议：
+- 路由寿命（avg_lifetime）、跨缝占比（seam_ratio）、路径变更率（change_rate）。
+- 定位可用性 \(A^{pos}\)、CRLB/GDOP统计、可见波束/协作卫星均值。
+- 队列稳定性/丢包/时延与吞吐，并与 \(\lambda_{pos}\)、`seam_penalty`、`reroute_cooldown_ms` 做敏感性联动。
+
+---
+
 ## 参考公式对齐
 详见 `docs/reference/formula_alignment.md`（参考B）。
+
+---
+
+## 本章小结与局限
+
+- 小结：本章建立了定位-网络协同的指标、接口与实验范式，为准入与调度的联合优化提供一致的特征与约束。
+- 局限：
+  - Beam Hint与协作集构造依赖可见性与相关性建模，极端遮挡/干扰下可能偏差；
+  - 指标权重与阈值需场景化标定，跨场景迁移性有限；
+  - 与物理层联动（波束成形/功控）的闭环尚未在本稿覆盖。

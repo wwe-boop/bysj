@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+
+{% block title %}主页 - LEO卫星网络仿真系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- 欢迎横幅 -->
+        <div class="jumbotron bg-gradient text-white p-5 rounded mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+            <div class="container">
+                <h1 class="display-4">
+                    <i class="fas fa-satellite"></i>
+                    LEO卫星网络仿真系统
+                </h1>
+                <p class="lead">
+                    智能准入控制与资源分配算法研究平台
+                </p>
+                <hr class="my-4">
+                <p>
+                    基于DSROQ算法的LEO卫星网络资源分配与定位感知准入控制系统
+                </p>
+                <a class="btn btn-light btn-lg" href="/dashboard" role="button">
+                    <i class="fas fa-rocket"></i> 开始使用
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 系统概览 -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> 系统概览</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>核心功能</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success"></i> 智能准入控制算法</li>
+                            <li><i class="fas fa-check text-success"></i> DSROQ资源分配</li>
+                            <li><i class="fas fa-check text-success"></i> MCTS路由优化</li>
+                            <li><i class="fas fa-check text-success"></i> 定位感知服务</li>
+                            <li><i class="fas fa-check text-success"></i> 实时性能监控</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>技术特性</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-satellite text-primary"></i> 1584颗Starlink卫星</li>
+                            <li><i class="fas fa-brain text-info"></i> 深度强化学习</li>
+                            <li><i class="fas fa-chart-line text-warning"></i> 李雅普诺夫优化</li>
+                            <li><i class="fas fa-network-wired text-success"></i> 多QoS等级支持</li>
+                            <li><i class="fas fa-clock text-danger"></i> 实时仿真引擎</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 快速状态 -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-tachometer-alt"></i> 系统状态</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-12 mb-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span>仿真状态:</span>
+                            <span class="badge bg-secondary" id="sim-status">未运行</span>
+                        </div>
+                    </div>
+                    <div class="col-12 mb-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span>卫星数量:</span>
+                            <span class="badge bg-info" id="satellite-count">1584</span>
+                        </div>
+                    </div>
+                    <div class="col-12 mb-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span>活跃用户:</span>
+                            <span class="badge bg-success" id="active-users">0</span>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <span>系统负载:</span>
+                            <span class="badge bg-warning" id="system-load">低</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 快速操作 -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt"></i> 快速操作</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/simulation" class="btn btn-primary">
+                        <i class="fas fa-play"></i> 启动仿真
+                    </a>
+                    <a href="/visualization" class="btn btn-info">
+                        <i class="fas fa-chart-area"></i> 查看可视化
+                    </a>
+                    <a href="/scenarios" class="btn btn-secondary">
+                        <i class="fas fa-list"></i> 管理场景
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 算法介绍 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-graduation-cap"></i> 算法介绍</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <i class="fas fa-door-open fa-3x text-primary mb-3"></i>
+                            <h6>智能准入控制</h6>
+                            <p class="text-muted">
+                                基于深度强化学习和定位感知的智能准入控制算法，
+                                支持多种决策类型和QoS保证。
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <i class="fas fa-route fa-3x text-success mb-3"></i>
+                            <h6>DSROQ资源分配</h6>
+                            <p class="text-muted">
+                                结合MCTS路由和李雅普诺夫优化的动态资源分配算法，
+                                实现高效的带宽分配和QoS保证。
+                            </p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <i class="fas fa-crosshairs fa-3x text-warning mb-3"></i>
+                            <h6>定位感知服务</h6>
+                            <p class="text-muted">
+                                基于GDOP和信号强度的定位质量评估，
+                                为定位敏感应用提供优化的服务质量。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 获取系统状态
+function updateSystemStatus() {
+    fetch('/api/status')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('sim-status').textContent = 
+                data.simulation_running ? '运行中' : '未运行';
+            document.getElementById('sim-status').className = 
+                'badge ' + (data.simulation_running ? 'bg-success' : 'bg-secondary');
+            
+            document.getElementById('satellite-count').textContent = data.total_satellites;
+        })
+        .catch(error => console.error('获取系统状态失败:', error));
+}
+
+// 页面加载时更新状态
+document.addEventListener('DOMContentLoaded', function() {
+    updateSystemStatus();
+    
+    // 每30秒更新一次状态
+    setInterval(updateSystemStatus, 30000);
+});
+</script>
+{% endblock %}

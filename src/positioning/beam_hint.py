@@ -21,12 +21,13 @@ def beam_schedule_hint(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     users = payload.get('users', [])
     k = payload.get('budget', {}).get('beams_per_user', 2)
+    assignments: List[Dict[str, Any]] = []
+    for u in users:
+        recs = [{'sat_id': i, 'score': 0.5} for i in range(k)]
+        assignments.append({'user': u, 'recommendations': recs})
     return {
         'policy': 'heuristic-fallback',
-        'assignments': [
-            {'user': u, 'recommendations': [{'sat_id': i, 'score': 0.5} for i in range(k)}]
-            for u in users
-        ]
+        'assignments': assignments
     }
 
 

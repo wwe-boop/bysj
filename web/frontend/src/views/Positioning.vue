@@ -270,7 +270,36 @@
               <el-icon><DocumentRemove /></el-icon>
               <span>暂无覆盖数据</span>
             </div>
-            <div v-else ref="coverageMapRef" class="coverage-map"></div>
+            <div v-else ref="coverageMapRef" class="coverage-map">
+              <!-- 占位地图容器，可替换为Cesium/Three渲染 -->
+              <span>覆盖热力渲染占位</span>
+            </div>
+          </div>
+        </el-card>
+
+        <!-- Beam Hint 可视化 -->
+        <el-card class="mb-4">
+          <template #header>
+            <div class="card-header">
+              <span>Beam Hint 可视化</span>
+              <el-button-group size="small">
+                <el-button @click="requestBeamHint" :loading="beamHintLoading">获取推荐</el-button>
+                <el-button @click="exportBeamHintCSV" :disabled="!beamHint.assignments?.length">导出CSV</el-button>
+              </el-button-group>
+            </div>
+          </template>
+          <div class="coverage-container">
+            <div v-if="beamHintLoading" class="coverage-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              <span>计算推荐中...</span>
+            </div>
+            <div v-else-if="!beamHint.assignments?.length" class="coverage-empty">
+              <el-icon><DocumentRemove /></el-icon>
+              <span>暂无推荐</span>
+            </div>
+            <div v-else class="coverage-map">
+              <span>Beam Hint 叠加层占位（用户与推荐卫星连线）</span>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -318,6 +347,10 @@ const statsLoading = ref(false)
 const coverageLoading = ref(false)
 
 const coverageMapRef = ref<HTMLElement>()
+
+// Beam Hint
+const beamHint = ref<any>({ policy: '', assignments: [] })
+const beamHintLoading = ref(false)
 
 // 方法
 const loadConfig = async () => {
@@ -402,12 +435,43 @@ const exportCoverage = () => {
     coverage: coverage.value,
     timestamp: new Date().toISOString()
   }
-  
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = `positioning_coverage_${Date.now()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+const requestBeamHint = async () => {
+  beamHintLoading.value = true
+  try {
+    const users = [
+      { id: testRequest.value.userId, lat: testRequest.value.lat, lon: testRequest.value.lon }
+    ]
+    const result = await positioningApi.getBeamHint({ users, budget: { beams_per_user: 2 } })
+    beamHint.value = result
+    appStore.addNotification({ type: 'success', title: 'Beam Hint', message: '已生成推荐' })
+  } catch (e) {
+    ElMessage.error('获取 Beam Hint 失败')
+  } finally {
+    beamHintLoading.value = false
+  }
+}
+
+const exportBeamHintCSV = () => {
+  if (!beamHint.value.assignments?.length) return
+  const rows = beamHint.value.assignments.flatMap((a: any) => (
+    a.recommendations.map((r: any) => ({ user_id: a.user?.id, sat_id: r.sat_id, score: r.score }))
+  ))
+  const header = 'user_id,sat_id,score\n'
+  const csv = header + rows.map((r: any) => `${r.user_id},${r.sat_id},${r.score}`).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `beam_hint_${Date.now()}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }

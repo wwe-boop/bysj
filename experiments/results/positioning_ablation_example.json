@@ -1,0 +1,28 @@
+{
+  "FullFeatures": {
+    "qoe": {"mean": 4.18, "ci95": 0.07},
+    "admission_rate": 0.78,
+    "pos_availability": 0.86,
+    "crlb": {"mean": 7.4, "p95": 12.1}
+  },
+  "No_CRLB_GDOP": {
+    "qoe": {"mean": 4.02, "ci95": 0.08},
+    "admission_rate": 0.76,
+    "pos_availability": 0.73,
+    "crlb": {"mean": 9.1, "p95": 15.9}
+  },
+  "No_BeamHint": {
+    "qoe": {"mean": 4.05, "ci95": 0.09},
+    "admission_rate": 0.75,
+    "pos_availability": 0.79,
+    "crlb": {"mean": 8.3, "p95": 14.6}
+  },
+  "No_CoopStats": {
+    "qoe": {"mean": 4.01, "ci95": 0.08},
+    "admission_rate": 0.74,
+    "pos_availability": 0.77,
+    "crlb": {"mean": 8.7, "p95": 15.2}
+  }
+}
+
+

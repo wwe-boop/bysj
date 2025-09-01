@@ -74,5 +74,10 @@ export const positioningApi = {
   // 更新定位配置
   updateConfig(config: any): Promise<void> {
     return request.put('/positioning/config', config).then(() => {})
+  },
+
+  // 生成 Beam Hint
+  getBeamHint(payload: { users: any[], budget?: any }): Promise<any> {
+    return request.post('/positioning/beam_hint', payload).then(res => res.data!)
   }
 }

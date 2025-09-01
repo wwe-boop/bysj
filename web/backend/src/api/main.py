@@ -23,18 +23,38 @@ from src.simulation.simulation_engine import SimulationEngine
 from src.simulation.scenario_manager import ScenarioManager
 
 # 导入路由模块
-from .routes import (
-    simulation_bp,
-    network_bp,
-    admission_bp,
-    positioning_bp,
-    statistics_bp,
-    scenarios_bp,
-    experiments_bp
-)
-from .websocket import SocketIOHandler
-from .middleware import setup_middleware
-from .utils.logger import setup_logging
+try:
+    from .routes import (
+        simulation_bp,
+        network_bp,
+        admission_bp,
+        positioning_bp,
+        statistics_bp,
+        scenarios_bp,
+        experiments_bp
+    )
+    from .websocket import SocketIOHandler
+    from .middleware import setup_middleware
+    from .utils.logger import setup_logging
+except ImportError:
+    # 如果相对导入失败，尝试绝对导入
+    import sys
+    import os
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, current_dir)
+
+    from routes import (
+        simulation_bp,
+        network_bp,
+        admission_bp,
+        positioning_bp,
+        statistics_bp,
+        scenarios_bp,
+        experiments_bp
+    )
+    from websocket import SocketIOHandler
+    from middleware import setup_middleware
+    from utils.logger import setup_logging
 
 
 class APIServer:
