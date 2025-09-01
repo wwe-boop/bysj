@@ -17,19 +17,10 @@
                              │
                              ▼ 决策接口
 ┌─────────────────────────────────────────────────────────────┐
-│                   Hypatia网络状态层                          │
+│             Hypatia网络状态层 + 融合定位层                   │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   星座管理器     │  │   拓扑计算器     │  │   状态监控器     │ │
-│  │(Constellation Mgr)│  │(Topology Calc) │  │(State Monitor)  │ │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-                             │
-                             ▼ 定位接口
-┌─────────────────────────────────────────────────────────────┐
-│                 融合定位/协作定位模块                        │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   CRLB/GDOP计算  │  │   波束调度提示   │  │  定位质量监控    │ │
-│  │ (CRLB/GDOP)     │  │ (Beam Hint)    │  │ (Pos Monitor)   │ │
+│  │  星座/拓扑管理器  │  │   定位指标计算   │  │   状态/质量监控  │ │
+│  │ (Const/Topo Mgr) │  │(Pos Metrics Calc)│  │(State/Pos Mon)  │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                              │
@@ -59,7 +50,7 @@
 - **PPO Agent**：基于状态做出准入决策（接受/拒绝/降级/延迟/部分接受）
 - **动作执行器**：将DRL决策转换为具体的网络操作
 
-#### Hypatia网络状态层 + 融合定位层（新增）
+#### Hypatia网络状态层 + 融合定位层
 - **星座管理器**：管理LEO卫星星座配置和轨道计算
 - **拓扑计算器**：实时计算网络拓扑变化
 - **定位指标计算**（新增）：计算 CRLB、GDOP、可见波束数、协同卫星数、平均SINR 等（参考 reference/2404.01148v1.pdf）
@@ -207,6 +198,57 @@ class DRLDSROQInterface:
         return route, bandwidth
 ```
 
+### 4.3 模块边界与接口契约
+
+#### 4.3.1 模块边界
+*   **准入模块 (Admission)**:
+    *   输入：新流到达事件、网络/定位状态特征（含CRLB/GDOP、可见波束/协作卫星、Beam Hint）、历史与趋势。
+    *   输出：已接纳业务集合、优先级/权重画像、降级/延迟/部分接纳策略、队列约束提示。
+*   **调度模块 (Scheduling/DSROQ)**:
+    *   输入：准入输出的业务集合与策略约束、网络瞬时/预测状态、链路/队列信息。
+    *   输出：多跳路由、带宽分配、调度次序与速率控制、队列权重更新；必要时触发重分配。
+
+#### 4.3.2 接口契约总览
+
+上层准入向下层DSROQ输出“集合+画像+约束”三要素；定位模块提供`Apos/CRLB/GDOP/Beam Hint`等服务性信号。
+
+**接口示例 (Admission → DSROQ):**
+```json
+{
+  "flows": [
+    {
+      "id": "u1",
+      "class": "EF",
+      "demand_mbps": 5.0,
+      "latency_ms": 50,
+      "duration_s": 120,
+      "position": {"lat": 39.9, "lon": 116.4}
+    }
+  ],
+  "profiles": {
+    "weights": {"EF": 1.2, "AF": 1.0, "BE": 0.7},
+    "lambda_pos": 0.2
+  },
+  "constraints": {
+    "seam_penalty": 0.5,
+    "reroute_cooldown_ms": 5000,
+    "min_visible_beams": 2,
+    "min_coop_sats": 2,
+    "crlb_threshold": 50,
+    "beam_hint": [
+      {"user_id": "u1", "candidates": ["b12", "b45"]}
+    ]
+  }
+}
+```
+
+#### 4.3.3 Web API 端点映射
+
+*   **准入**: `POST /api/admission/request`（提交`flows/profiles/constraints`）。
+*   **定位指标**: `GET|POST /api/positioning/metrics`（GET轻量参数查询；POST以JSON体提交复杂查询）。
+*   **波束提示**: `POST /api/positioning/beam_hint`（获取每用户的候选波束集合）。
+*   **网络视图**: `GET /api/network/topology`（供TEG/可视性可视化）；状态视图：`GET /api/network/state`（工程态）。
+
 ## 5. 可扩展性设计
 
 ### 5.1 模块化设计
@@ -224,7 +266,38 @@ class DRLDSROQInterface:
 - 详细的日志记录
 - 可视化的调试界面
 
+## 6. 协同策略与建模
+
+### 6.1 协同策略与失效保护
+
+*   当定位质量退化或拥塞风险上升时，准入进入保守模式（优先级降低、延迟或部分接纳），调度触发李雅普诺夫稳定性保护的带宽回收与路径切换。
+*   当业务结构变化（EF/AF/BE占比波动）时，准入动态调整权重画像，调度依据新画像重排队列与重分配带宽。
+*   **失效保护**：任一模块异常时，降级到阈值准入 + 启发式调度的安全基线，保证可用性。
+
+### 6.2 接触计划与时间扩展图建模
+
+*   **接触计划 (Visibility/Contact Plan)**：由 `Hypatia` 产生卫星-地面/卫星-卫星的可见性窗口、仰角、Doppler与带宽上限，供状态提取与路由代价计算使用。
+*   **时间扩展图 (Time-Expanded Graph, TEG)**：以时间步Δτ离散化网络，节点复制为 \( V_t \)，边带时间依赖代价 \( c_t(e) \) 与可用性指示 \( a_t(e)\in\{0,1\} \)。
+*   **seam与重路由惩罚**：跨缝边附加代价 \( \kappa_{seam} \)；路径变更惩罚/冷却 \( \kappa_{chg},\ T_{cool} \) 以限制重路由频率，提升路由寿命与稳定性。
+
+## 7. 实现落点索引
+
+| 模块 | 文档关键点 | 实现落点 | 相关Web端点 |
+| --- | --- | --- | --- |
+| Hypatia/网络状态 | 接触计划、TEG节点/边 | `src/hypatia/network_state.py` | `GET /api/network/topology` |
+| DSROQ-路由 | 跨缝惩罚、路径代价 | `src/dsroq/mcts_routing.py` |（内部计算）|
+| DSROQ-调度 | 李雅普诺夫与重分配 | `src/dsroq/core.py` | `POST /api/simulation/start`（触发流程）|
+| 准入控制 | DRL/PPO环境与策略 | `src/admission/*` | `POST /api/admission/request` |
+| 定位协同 | Apos/CRLB/GDOP/Beam Hint | `src/positioning/` | `GET /api/positioning/metrics`, `POST /api/positioning/beam_hint` |
+
 ---
+
+## 8. 差异与工程化扩展（新增）
+
+- 指标抽象与接口统一：系统层定义 `Apos`，并在状态/奖励/代价/约束与 Web/API 字段中对齐；区别于参考中仅报告 CRLB/GDOP。
+- 搜索与稳定性增强：以 MCTS 路由结合 `seam_penalty`、`path_change_penalty`、`reroute_cooldown_ms` 与 TEG 模型，面向可运行稳定性而不是仅理论最优。
+- 软硬约束并行：硬约束过滤最小可见波束/协作卫星与 CRLB 阈值，软约束以 `lambda_pos` 注入代价；两类约束在架构层实现分层解耦。
+- 未覆盖内容：稳定域/近最优界的理论证明与 EKF/UKF/PF 估计器实现细节不在本章展开，转由实验与实现部分体现其影响。
 
 ## 引用原则（工程文档）
 - 工程文档与示意图不直接出现外部论文题名与作者；

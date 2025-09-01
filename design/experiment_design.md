@@ -153,9 +153,52 @@ class DRLBaselineMethods:
         return self.action_mapping[discrete_action]
 ```
 
+### 2.3 独立与协同评测协议 (新增)
+为精确评估各模块的独立贡献与协同增益，采用以下三种评测协议（详见 `docs/06_experiments.md`）：
+
+- **仅准入评测 (Admission-only)**：采用本文提出的DRL准入算法，但调度/路由层固定为简单的基线方法（如最短路+比例带宽）。此举旨在衡量准入策略本身带来的性能提升。
+- **仅调度评测 (Scheduling-only)**：采用本文提出的DSROQ联合调度算法，但准入层固定为传统的基线方法（如基于阈值或负载的准入）。此举旨在衡量资源分配与调度算法的性能。
+- **联合评测 (Joint)**：将本文的DRL准入与DSROQ调度联合使用，评估端到端的系统整体性能，并衡量其协同增益。
+
 ## 3. 性能评估指标
 
-### 3.1+ 定位相关指标（新增）
+### 3.1 数据格式约定（新增）
+所有实验结果应统一输出为结构化的JSON文件，以便后续自动绘图与分析。JSON的schema应保持稳定，并与绘图脚本的输入要求对齐。
+
+**JSON最小样例 (供 `qoe_metrics_plot.py` 与 `admission_rates_plot.py` 使用):**
+```json
+{
+  "MethodA": {
+    "qoe": {"mean": 0.86, "ci95": 0.02},
+    "admission": {"accept": 0.72, "reject": 0.18, "degrade": 0.06, "delay": 0.04},
+    "fairness": {"jain": 0.91},
+    "util": 0.78,
+    "delay_ms": 42.5,
+    "thr_mbps": 125.3,
+    "plr": 0.012,
+    "handover": {"rate": 0.58, "pingpong": 3.0, "outage_ms": 11.8},
+    "routing": {"change_rate": 0.14, "avg_lifetime": 36.0, "seam_ratio": 8.1}
+  },
+  "MethodB": {}
+}
+```
+
+**敏感性热力图示例 (`sensitivity_matrix.json`):**
+```json
+{
+  "x_labels": ["w_pos=0.0", "0.1", "0.2", "0.3"],
+  "y_labels": ["seam=0.0", "0.3", "0.5", "0.7"],
+  "matrix": [
+    [0.80, 0.82, 0.85, 0.83],
+    [0.81, 0.84, 0.86, 0.84],
+    [0.79, 0.83, 0.86, 0.85],
+    [0.78, 0.82, 0.85, 0.84]
+  ],
+  "metric": "qoe.mean"
+}
+```
+
+### 3.2 定位相关指标（新增）
 ```python
 class PositioningMetrics:
     """定位相关评估指标（与 reference/2404.01148v1.pdf 对齐）"""
@@ -171,10 +214,15 @@ class PositioningMetrics:
     def cooperation_gain(self, users):
         # 多卫星/多波束协作带来的精度提升
         pass
+    def positioning_availability(self, users):
+        # 定位可用性: 由可见波束/协作卫星/CRLB阈值综合打分
+        pass
+    def cooperation_degree(self, users):
+        # 协作度: 每用户平均协作卫星数、平均可见波束数
+        pass
 ```
 
-
-### 3.1 QoE相关指标
+### 3.3 QoE相关指标
 
 ```python
 class QoEMetrics:
@@ -233,7 +281,7 @@ class QoEMetrics:
         return numerator / denominator if denominator > 0 else 0
 ```
 
-### 3.2 准入控制指标
+### 3.4 准入控制指标
 
 ```python
 class AdmissionMetrics:
@@ -277,7 +325,7 @@ class AdmissionMetrics:
         return admission_rates
 ```
 
-### 3.3 网络性能指标
+### 3.5 网络性能指标
 
 ```python
 class NetworkMetrics:
@@ -312,6 +360,37 @@ class NetworkMetrics:
         total_packets = sum(flow.packets_sent for flow in flow_records)
         lost_packets = sum(flow.packets_lost for flow in flow_records)
         return lost_packets / total_packets if total_packets > 0 else 0
+```
+
+### 3.6 切换与路由稳定性指标 (新增)
+
+```python
+class StabilityMetrics:
+    """切换与路由稳定性指标"""
+
+    def calculate_handover_rate(self, handover_events, duration_s):
+        """计算切换率（次/用户/小时）"""
+        pass
+
+    def calculate_ping_pong_rate(self, handover_events):
+        """计算乒乓切换率"""
+        pass
+
+    def calculate_handover_outage_duration(self, handover_events):
+        """计算切换中断时长"""
+        pass
+
+    def calculate_route_change_rate(self, route_update_events, duration_s):
+        """计算路由变更率"""
+        pass
+
+    def calculate_average_route_lifetime(self, flows):
+        """计算平均路由寿命"""
+        pass
+
+    def get_seam_crossing_ratio(self, flows):
+        """统计跨缝路径占比"""
+        pass
 ```
 
 ## 4. 定位相关实验（新增）
@@ -349,6 +428,14 @@ class NetworkMetrics:
 指标：
 - QoE_mean、admission_rate、violations、delay_p95；
 - 触发频率与代价（额外重分配次数）。
+
+### 4.4 估计器/噪声与稳定性扩展实验（新增）
+
+- 估计器对比：EKF/UKF/粒子滤波（PF）在相同观测与噪声设定下的 CRLB 贴近度、收敛与波动性；报告计算开销。
+- 噪声结构：`R` 的对角/非对角（相关性）与不同量级（低/中/高噪声）下，CRLB/GDOP、`Apos`、`qoe.mean` 的变化。
+- NLOS/同步误差：注入偏差项（固定/随机漂移），评估策略联动（延迟/降级/保守）触发边界与收益。
+- 稳定性曲线：`seam_penalty`、`path_change_penalty`、`reroute_cooldown_ms` 与 `lambda_pos` 的联动对路由寿命/变更率/跨缝占比的影响。
+- 复杂度折衷：记录 MCTS 搜索时间、估计器计算时间、策略推理时延，绘制 QoE/定位质量 vs. 时延/计算量的折衷曲线。
 
 ## 5. 实验场景设计
 

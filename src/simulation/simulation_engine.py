@@ -79,8 +79,10 @@ class SimulationEngine:
             self.logger.info("初始化仿真环境...")
             
             # 1. 初始化Hypatia适配器（支持后端模式切换）
-            self.hypatia_adapter = HypatiaAdapter(self.config.backend.__dict__)
-            self.hypatia_adapter.initialize(self.config.constellation.__dict__, self.config.backend.__dict__)
+            self.hypatia_adapter = HypatiaAdapter(
+                constellation_config=self.config.constellation,
+                backend_config=self.config.backend
+            )
             self.logger.info("✓ Hypatia适配器初始化完成")
             
             # 2. 初始化准入控制器
@@ -124,7 +126,8 @@ class SimulationEngine:
             try:
                 from src.admission.drl_admission import DRLAdmissionController
                 self.admission_controller = DRLAdmissionController(
-                    self.config.admission.__dict__
+                    config=self.config,
+                    simulation_engine=self
                 )
             except ImportError:
                 self.logger.warning("DRL不可用，回退到阈值控制")

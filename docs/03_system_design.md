@@ -124,11 +124,13 @@ flowchart TD
 
 与Web端点的对齐（文档级映射）：
 - 准入：`POST /api/admission/request`（提交`flows/profiles/constraints`）。
-- 定位指标：`GET /api/positioning/metrics`（查询`Apos/CRLB/GDOP`聚合）。
+- 定位指标：`GET|POST /api/positioning/metrics`（GET轻量参数查询；POST以JSON体提交复杂查询）。
 - 波束提示：`POST /api/positioning/beam_hint`（获取每用户的候选波束集合）。
-- 网络视图：`GET /api/network/topology`（供TEG/可视性可视化）。
+- 网络视图：`GET /api/network/topology`（供TEG/可视性可视化）；状态视图：`GET /api/network/state`（工程态）。
+- 统计汇总：`GET /api/statistics`（工程态，可选实现）。
+- 场景管理：`GET /api/scenarios/*`（工程态，可选实现）。
 
-补充说明：`/api/positioning/metrics` 同时支持 `POST` 以 JSON 体提交复杂查询（与本节字段命名严格一致）。
+补充说明：`/api/positioning/metrics` 支持 GET（轻量查询）与 POST（JSON体复杂查询），与本节字段命名严格一致。
 
 ## 3.6 实现落点索引表（新增）
 
@@ -147,3 +149,12 @@ flowchart TD
 - `GET /api/network/state`：工程态的聚合状态视图（便于调试与展示）。
 - `GET /api/statistics`：工程态的统计聚合端点（可选实现）。
 - `GET /api/scenarios/*`：场景列表与详情（便于前端交互）。
+
+---
+
+## 3.7 差异与工程化扩展（新增）
+
+- 定位-网络协同指标：在系统层统一引入 `Apos`（由可见波束/协作卫星/CRLB 阈值综合），并在状态/奖励/代价/约束与 API 字段中保持一致命名；参考文献多仅报告 CRLB/GDOP 而不构造组合可用性分数。
+- 路由搜索与稳定性约束：采用 MCTS 搜索并注入 `seam_penalty`、`path_change_penalty` 与 `reroute_cooldown_ms` 等稳定性约束，以时间扩展图（TEG）建模路径寿命；相较传统后压/凸优化路线更偏工程可落地实现。
+- 可行域与软/硬约束：对 `min_visible_beams`、`min_coop_sats`、`crlb_threshold` 进行硬约束过滤，同时以 `lambda_pos` 加权定位相关代价形成软约束；两类约束在接口契约中均有体现。
+- 理论边界与估计器细节：不在系统设计章节展开稳定域/近最优界证明与 EKF/UKF/粒子滤波实现细节；其影响通过第6章敏感性与稳健性实验反映。

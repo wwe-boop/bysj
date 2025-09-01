@@ -61,6 +61,11 @@ def extract_state_from_hypatia(self, time_step, new_flow_request):
 - 定位质量：CRLB_norm、GDOP、mean_SINR、visible_beams_cnt、coop_sat_cnt
 - 注：取值需标准化至[0,1]，并可对关键特征做滑动窗口平滑
 
+##### 路由与切换稳定性特征（加入状态向量）
+- 切换预测：handover_pred_count（预测切换次数）, earliest_handover_s（最早切换时间）
+- 路径稳定性：seam_flag（跨缝风险标志）, contact_margin_s（接触裕度）
+- 注：此类特征旨在提升策略的长期稳定性，抑制高频路由震荡。
+
     return np.array(state, dtype=np.float32)
 ```
 
@@ -118,7 +123,12 @@ def execute_action(self, action, flow_request, time_step):
 
 #### 奖励函数设计 (Reward Function)
 
-联合多目标奖励函数（QoE + 定位）：
+其核心思想是最大化一个加权多目标函数，其通用形式如下（详见 `docs/04_admission_drl.md`）：
+\[ r_t = w_1\,\Delta\mathrm{QoE}_t + w_2\,\mathrm{Fair}_t + w_3\,\mathrm{Eff}_t + w_4\,A^{pos}_t - w_5\,\mathrm{Viol}_t - w_6\,\mathrm{DelayPen}_t \]
+
+其中各权重 \(w_i\) 可调，分别对应QoE增量、公平性、效率、定位可用性、违规惩罚与延迟惩罚。
+
+以下为该思想的伪代码实现：
 
 ```python
 def calculate_reward(self, action, state_before, state_after, flow_info):
@@ -184,6 +194,37 @@ def calculate_stability_bonus(self, state):
     stability_bonus = max(0, 2.0 - qoe_variance)  # 方差越小，奖励越高
     return stability_bonus
 ```
+
+#### 状态与奖励字段规范 (新增)
+
+**状态向量主要字段:**
+
+| 字段 | 含义 | 归一化/范围 | 来源 |
+| --- | --- | --- | --- |
+| link_util | 链路利用率统计（均值/分位） | [0,1] | 仿真/监控 |
+| qoe_stats | QoE历史/趋势特征 | [0,1] 归一化 | 评估模块 |
+| traffic_mix | EF/AF/BE占比与速率 | [0,1] | 生成器/监控 |
+| crlb | 定位CRLB（位置估计下界） | min-max至[0,1] | Positioning |
+| gdop | 几何精度因子GDOP | min-max至[0,1] | Positioning |
+| visible_beams | 可见波束数 | 标准化（/上限） | Positioning/Hypatia |
+| coop_sats | 协作卫星数 | 标准化（/上限） | Positioning/Hypatia |
+| sinr_avg/sinr_min | 平均/最小SINR | dB转线性后归一化 | 物理/链路模型 |
+| beam_hint_k | 推荐波束集合大小 | 标准化 | Positioning |
+| handover_pred_count | 预测切换次数 | 标准化（/窗口） | 预测器 |
+| earliest_handover_s | 最早切换时间 | /窗口长度归一 | 预测器 |
+| seam_flag | 是否跨缝路径风险 | {0,1} | 路由/几何推断 |
+| contact_margin_s | 接触裕度 | /窗口长度归一 | Hypatia |
+
+**奖励函数权重建议:**
+
+| 项 | 符号 | 默认 | 建议范围 |
+| --- | --- | --- | --- |
+| QoE增量 | \(w_1\) | 1.0 | [0.5, 2.0] |
+| 公平性 | \(w_2\) | 0.2 | [0.0, 0.5] |
+| 资源利用 | \(w_3\) | 0.2 | [0.0, 0.5] |
+| 定位可用性 | \(w_4\) | 0.3 | [0.0, 1.0] |
+| 违规惩罚 | \(w_5\) | 0.8 | [0.5, 2.0] |
+| 延迟惩罚 | \(w_6\) | 0.3 | [0.0, 1.0] |
 
 ### 1.2 PPO算法实现
 
@@ -417,6 +458,27 @@ class LyapunovScheduler:
         return penalty
 ```
 
+### 2.3 关键可配置参数（新增）
+
+为支持算法的灵活调试与实验，DSROQ及相关模块的核心参数应被设计为可配置项。这些参数在系统配置（如 `experiments/configs/default.yaml`）和API接口（见 `docs/03_system_design.md` 3.2.3节）中应保持命名与语义一致。
+
+关键参数示例如下（详见 `docs/05_dsroq_integration.md` 5.9节）：
+
+- **路由参数**：
+  - `seam_penalty`：跨缝路径的附加代价。
+  - `path_change_penalty`：路径变更的惩罚。
+  - `reroute_cooldown_ms`：重路由的冷却时间，避免频繁变更。
+
+- **定位协同参数**：
+  - `lambda_pos`：定位质量在代价函数中的权重。
+  - `crlb_threshold`：可接受的CRLB阈值上限。
+  - `min_visible_beams` / `min_coop_sats`：维持定位所需的最小可见波束/协作卫星数。
+
+- **调度参数**：
+  - `lyapunov_weight`：李雅普诺夫优化中的稳定性权重 \(V\)。
+  - `queue_backlog_limit`：队列积压的告警阈值。
+
+
 ## 3. 协作定位与 Beam Hint（新增）
 
 ### 3.1 定位质量建模与特征注入
@@ -481,3 +543,13 @@ def beam_schedule_hint(payload):
 - 对网络拓扑变化的适应性
 - 对流量突发的处理能力
 - 对系统故障的恢复能力
+
+---
+
+## 4. 差异与工程化扩展（新增）
+
+- 组合指标 `Apos`：以可见波束/协作卫星/CRLB 阈值构成定位可用性，用作奖励与代价的统一抽象；区别于参考中仅以 CRLB/GDOP 报告定位质量。
+- Beam Hint 双角色：既作为状态特征提升策略可观测性，也作为执行端软约束（触发轻量重分配与路径几何优化）。
+- MCTS 路由与稳定性：将 `lambda_pos` 注入代价，配合 `seam_penalty`、`path_change_penalty` 与 `reroute_cooldown_ms` 抑制高频重路由、延长路径寿命。
+- 李雅普诺夫调度扩展：惩罚项中可加入定位退化代价，实现队列稳定与定位几何保持的协同；未在此处给出稳定域证明，依赖第6章实验与实现验证。
+- 估计器与噪声建模：不限定 EKF/UKF/粒子滤波，FIM/CRLB 用于指导策略；噪声/偏差/相关性在实验中以敏感性方式呈现。

@@ -82,10 +82,27 @@
 }
 ```
 
+字段命名一致性：示例中的键名需与第3.2.3“constraints”字段保持一致：`lambda_pos, crlb_threshold, min_visible_beams, min_coop_sats, seam_penalty, reroute_cooldown_ms`。如使用 `path_change_penalty/lyapunov_weight/queue_backlog_limit`，需在接口契约与系统综述（Summary）中同步出现。
+
 输出-指标对齐建议：
 - 路由寿命（avg_lifetime）、跨缝占比（seam_ratio）、路径变更率（change_rate）。
 - 定位可用性 \(A^{pos}\)、CRLB/GDOP统计、可见波束/协作卫星均值。
 - 队列稳定性/丢包/时延与吞吐，并与 \(\lambda_{pos}\)、`seam_penalty`、`reroute_cooldown_ms` 做敏感性联动。
+
+---
+
+## 5.10 与参考工作的差异与补充（新增）
+
+- 工程化代价整合：在路由/调度层显式引入 `\lambda_{pos}\,\Phi(CRLB,GDOP,visible\_beams,coop\_sats)`，以统一方式权衡网络与定位目标；参考类调度论文多未将定位几何直接纳入代价。
+- 搜索策略差异：采用 MCTS 进行路由近似最优搜索，替代常见的凸优化/后压（backpressure）或纯启发式路径选择。
+- 可行域与稳定性约束：引入 `seam_penalty`、`path_change_penalty`、`reroute_cooldown_ms` 等工程稳定性约束，以提升路径寿命并抑制高频重路由。
+- 指标扩展：定义组合指标 `Apos\in[0,1]` 并贯穿状态/奖励/代价；该指标为工程抽象，非通行的定位学术指标。
+- 未覆盖/后续工作：
+  - 理论层稳定性与性能保证：未给出基于 Foster–Lyapunov 的稳定域或近最优界证明；后续将补充虚拟队列/约束队列构造与证明套路。
+  - 测量噪声与融合细化：当前以通用 FIM 近似表述，未展开 EKF/UKF/粒子滤波等估计器细节与 NLOS/同步误差模型；后续在实验与实现中补齐。
+  - 与 backpressure 的系统对比：复杂度—性能权衡与可扩展性评估将作为扩展实验提供。
+
+> 注：本节旨在与常见参考范式对齐并明确工程化扩展边界，详细公式对齐见“参考公式对齐”。
 
 ---
 

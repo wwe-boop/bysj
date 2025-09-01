@@ -14,7 +14,10 @@ def get_network_state():
     """获取当前网络状态"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -78,7 +81,10 @@ def get_network_topology():
     """获取网络拓扑"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -128,7 +134,10 @@ def get_satellites():
     """获取卫星信息"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -171,7 +180,10 @@ def get_links():
     """获取链路信息"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -225,7 +237,10 @@ def get_flows():
     """获取流量信息"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -274,7 +289,10 @@ def get_network_utilization():
     """获取网络利用率"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,

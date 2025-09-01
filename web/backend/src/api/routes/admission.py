@@ -90,7 +90,10 @@ def process_admission_request():
             }), 400
         
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -166,7 +169,10 @@ def get_admission_statistics():
     """获取准入控制统计信息"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -204,7 +210,10 @@ def get_admission_config():
     """获取准入控制配置"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             # 返回默认配置
             from src.core.config import SystemConfig
@@ -259,7 +268,10 @@ def update_admission_config():
             }), 400
         
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine, _simulation_running
+        try:
+            from ..routes.simulation import _simulation_engine, _simulation_running
+        except ImportError:
+            from routes.simulation import _simulation_engine, _simulation_running
         if _simulation_running:
             return jsonify({
                 'success': False,
@@ -340,7 +352,10 @@ def get_admission_history():
         offset = request.args.get('offset', 0, type=int)
 
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': True,
@@ -395,7 +410,10 @@ def start_drl_training():
             }), 400
 
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -435,7 +453,10 @@ def stop_drl_training():
         training_id = request.json.get('trainingId') if request.json else None
 
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -470,7 +491,10 @@ def get_drl_training_status():
     """获取DRL训练状态"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -519,7 +543,10 @@ def get_drl_training_metrics():
         limit = request.args.get('limit', 1000, type=int)
 
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -565,7 +592,10 @@ def get_drl_environment_state():
     """获取DRL环境状态"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             return jsonify({
                 'success': False,
@@ -623,7 +653,10 @@ def get_drl_reward_config():
     """获取DRL奖励函数配置"""
     try:
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine
+        try:
+            from ..routes.simulation import _simulation_engine
+        except ImportError:
+            from routes.simulation import _simulation_engine
         if not _simulation_engine:
             # 返回默认配置
             return jsonify({
@@ -712,7 +745,10 @@ def update_drl_reward_config():
             }), 400
 
         # 获取仿真引擎
-        from ..routes.simulation import _simulation_engine, _simulation_running
+        try:
+            from ..routes.simulation import _simulation_engine, _simulation_running
+        except ImportError:
+            from routes.simulation import _simulation_engine, _simulation_running
         if _simulation_running:
             return jsonify({
                 'success': False,

@@ -150,12 +150,17 @@ npm run dev
 - `GET /api/admission/statistics` - 获取准入统计
 
 ### 定位服务
-- `GET /api/positioning/metrics` - 获取定位指标
+- `GET /api/positioning/metrics` - 获取定位指标（轻量查询）
+- `POST /api/positioning/metrics` - 获取定位指标（复杂查询）
 - `POST /api/positioning/beam_hint` - 获取波束候选
 
 ### 网络状态
 - `GET /api/network/state` - 获取网络状态
 - `GET /api/network/topology` - 获取网络拓扑
+
+### 统计与场景
+- `GET /api/statistics` - 获取统计汇总（工程态，可选）
+- `GET /api/scenarios/*` - 场景管理（工程态，可选）
 
 ## 系统集成
 
@@ -190,9 +195,11 @@ npm run dev
 | --- | --- | --- | --- |
 | `POST /api/admission/request` | `flows[]`, `profiles.weights`, `constraints.{lambda_pos,seam_penalty,reroute_cooldown_ms,beam_hint}` | `decision`, `accepted_flows[]`, `policies` | 第3.2.3/第4章 |
 | `GET /api/positioning/metrics` | `time`, `users[]` | `apos`, `crlb_mean/p95`, `gdop_mean/p95` | 第5章 |
+| `POST /api/positioning/metrics` | `time`, `users[]` | `apos`, `crlb_mean/p95`, `gdop_mean/p95` | 第5章 |
 | `POST /api/positioning/beam_hint` | `time`, `users[]`, `budget` | 每用户`candidates[]` | 第5章 |
 | `GET /api/network/topology` | - | 拓扑/可见性视图 | 第3.3.1 |
 | `POST /api/simulation/start` | 场景/模式参数 | 运行状态/会话ID | 第6.8 |
+| `GET /api/statistics` | - | 聚合指标JSON | 第6.4/6.8 |
 
 字段命名应与 `docs/03_system_design.md` 中“接口契约总览”保持一致，便于前后端与实验脚本共享同一Schema。
 

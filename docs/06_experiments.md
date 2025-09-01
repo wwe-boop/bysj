@@ -115,6 +115,32 @@ QoE均值/分布、公平性指数、准入/拒绝/降级/延迟率、网络利�
 
 总结在多维度指标与场景下的优势、局限与可推广性。
 
+### 6.4.2 噪声/融合敏感性与稳定性评测（新增）
+
+- 噪声协方差敏感性：设置不同 `R` 水平与结构（各测量 TOA/TDOA/AOA 的方差/相关性），观察 CRLB/GDOP 分布及 `Apos` 变化；联动 `qoe.mean`/`admission` 指标。
+- 融合加权敏感性：对 \(w_{TOA}, w_{TDOA}, w_{AOA}\) 在 simplex 上栅格/贝叶斯优化，比较定位/业务联合指标。
+- NLOS/同步误差鲁棒性：以场景开关/注入偏差的方式，评估定位质量退化下的策略联动效果（触发保守/延迟/降级）。
+- 调度稳定性：报告路由寿命、重路由冷却违规率、跨缝占比随 `seam_penalty`、`reroute_cooldown_ms`、`lambda_pos` 的联动曲线/热力图。
+- 复杂度与时延：记录策略推理时延、MCTS 搜索时间、指标计算时间，绘制性能—复杂度折衷曲线。
+
+输出建议：
+```json
+{
+  "Noise_R_sweep": {
+    "qoe": {"mean": 0.84},
+    "positioning": {"crlb_mean": 42.1, "gdop_mean": 1.9, "Apos": 0.73}
+  },
+  "Fusion_weight_grid": {
+    "metric": "qoe.mean",
+    "grid": [[0.82,0.84],[0.85,0.86]]
+  },
+  "Stability_curves": {
+    "avg_lifetime": [35.2, 38.1, 41.0],
+    "change_rate": [0.18, 0.15, 0.12]
+  }
+}
+```
+
 ---
 
 ## 附：指标定义（公式）
@@ -155,6 +181,13 @@ python src/api/main.py
 python src/admission/train.py --config experiments/configs/drl_params.yaml
 # 或回放/评测脚本
 python experiments/run_baselines.py
+```
+
+示例：通过模式参数启动（容错/降级演示）
+```bash
+curl -X POST "http://127.0.0.1:5000/api/simulation/start" \
+     -H "Content-Type: application/json" \
+     -d '{"admission_mode":"drl","scheduler_mode":"dsroq"}'
 ```
 
 3) 前端/可视化联动（示例调用）：
