@@ -15,13 +15,8 @@ from src.core.interfaces import AdmissionInterface
 from src.core.state import NetworkState, UserRequest
 
 
-class AdmissionDecision(Enum):
-    """准入决策类型"""
-    ACCEPT = "accept"                    # 接受
-    REJECT = "reject"                    # 拒绝
-    DEGRADED_ACCEPT = "degraded_accept"  # 降级接受
-    DELAYED_ACCEPT = "delayed_accept"    # 延迟接受
-    PARTIAL_ACCEPT = "partial_accept"    # 部分接受
+# 统一使用核心数据结构中的枚举，避免重复定义造成不一致
+from src.core.state import AdmissionDecision
 
 
 @dataclass

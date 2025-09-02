@@ -10,12 +10,10 @@ DSROQ资源分配模块
 
 from .dsroq_controller import DSROQController
 from .mcts_routing import MCTSRouter
-from .lyapunov_optimizer import LyapunovOptimizer
-from .bandwidth_allocator import BandwidthAllocator
+from .core import LyapunovScheduler
 
 __all__ = [
     'DSROQController',
     'MCTSRouter',
-    'LyapunovOptimizer', 
-    'BandwidthAllocator'
+    'LyapunovScheduler'
 ]

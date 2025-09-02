@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
 
-from .state import NetworkState, FlowRequest, Decision, AllocationResult, PositioningMetrics
+from .state import NetworkState, FlowRequest, Decision, AllocationResult, PositioningMetrics, UserRequest, AdmissionResult
 
 
 class AdmissionInterface(ABC):
@@ -29,30 +29,6 @@ class AdmissionInterface(ABC):
     @abstractmethod
     def reset_statistics(self) -> None:
         """重置统计信息"""
-        pass
-
-
-class DSROQInterface(ABC):
-    """DSROQ资源分配接口"""
-
-    @abstractmethod
-    def process_user_request(self, user_request: 'UserRequest', network_state: NetworkState) -> Optional['AllocationResult']:
-        """处理用户请求，返回资源分配结果"""
-        pass
-
-    @abstractmethod
-    def find_route(self, flow_request: 'FlowRequest', network_state: NetworkState) -> Optional[List[int]]:
-        """找到最优路由"""
-        pass
-
-    @abstractmethod
-    def allocate_bandwidth(self, flow_request: 'FlowRequest', route: List[int], network_state: NetworkState) -> float:
-        """分配带宽"""
-        pass
-
-    @abstractmethod
-    def get_statistics(self) -> Dict[str, Any]:
-        """获取统计信息"""
         pass
 
 
@@ -87,6 +63,26 @@ class HypatiaInterface(ABC):
     @abstractmethod
     def step_simulation(self, time_step: float) -> None:
         """推进仿真一个时间步"""
+        pass
+
+    @abstractmethod
+    def get_orbit_phase(self, time_step: Optional[float] = None) -> float:
+        """获取星座轨道相位"""
+        pass
+
+    @abstractmethod
+    def get_topology_change_rate(self) -> float:
+        """获取拓扑变化率"""
+        pass
+    
+    @abstractmethod
+    def predict_future_capacity(self, horizon_s: int) -> float:
+        """预测未来网络容量"""
+        pass
+
+    @abstractmethod
+    def get_routing_stability_metrics(self, user_request: 'FlowRequest') -> Dict[str, Any]:
+        """获取路由与切换稳定性指标"""
         pass
 
 

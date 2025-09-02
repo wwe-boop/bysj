@@ -10,9 +10,11 @@ from typing import Dict, List, Any, Optional, Tuple
 import logging
 
 from src.core.config import SystemConfig
-from src.simulation.simulation_engine import SimulationEngine
-from src.admission.admission_controller import AdmissionController, AdmissionResult, AdmissionDecision
-from src.core.state import NetworkState, UserRequest
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from src.simulation.simulation_engine import SimulationEngine
+from src.admission.admission_controller import AdmissionController
+from src.core.state import NetworkState, UserRequest, AdmissionResult, AdmissionDecision
 from src.admission.drl_environment import HypatiaAdmissionEnv
 
 try:
@@ -29,7 +31,7 @@ except ImportError:
 class DRLAdmissionController(AdmissionController):
     """基于DRL的准入控制器"""
     
-    def __init__(self, config: SystemConfig, simulation_engine: SimulationEngine):
+    def __init__(self, config: SystemConfig, simulation_engine: 'SimulationEngine'):
         super().__init__(config.admission.__dict__)
         
         if not TORCH_AVAILABLE:
@@ -102,7 +104,11 @@ class DRLAdmissionController(AdmissionController):
             # 提取状态特征
             # 注意：当前状态提取在env内部完成，对于推理，我们需要一种方式来获取它
             # 临时方案：直接调用env的内部方法
-            state_features = self.env._get_observation(user_request, network_state, positioning_metrics)
+            state_features = self.env._get_observation(
+                user_request=user_request,
+                network_state=network_state,
+                positioning_metrics=positioning_metrics
+            )
             
             # 使用模型预测动作
             if np.random.random() < self.epsilon and self.training_mode:
@@ -160,16 +166,17 @@ class DRLAdmissionController(AdmissionController):
                                      user_request: UserRequest,
                                      satellite_id: Optional[int],
                                      network_state: NetworkState) -> float:
-        """计算分配的带宽"""
+        """计算分配的带宽，与 algorithm_design.md 对齐"""
         if decision == AdmissionDecision.REJECT:
             return 0.0
         elif decision == AdmissionDecision.ACCEPT:
             return user_request.bandwidth_mbps
         elif decision == AdmissionDecision.DEGRADED_ACCEPT:
-            return user_request.bandwidth_mbps * 0.7  # 降级到70%
+            return user_request.bandwidth_mbps * 0.8  # 设计文档中的示例值
         elif decision == AdmissionDecision.PARTIAL_ACCEPT:
-            return user_request.bandwidth_mbps * 0.5  # 部分接受50%
-        else:
+            # 分配最小带宽需求
+            return getattr(user_request, 'min_bandwidth_mbps', user_request.bandwidth_mbps * 0.5)
+        else: # DELAYED_ACCEPT 或其他情况
             return user_request.bandwidth_mbps
     
     def _fallback_decision(self, 

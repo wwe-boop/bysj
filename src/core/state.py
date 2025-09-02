@@ -36,12 +36,22 @@ class ActionType(Enum):
     PARTIAL_ACCEPT = "partial_accept"
 
 
+class AdmissionDecision(Enum):
+    """准入决策的枚举类型"""
+    ACCEPT = "ACCEPT"
+    REJECT = "REJECT"
+    DEGRADED_ACCEPT = "DEGRADED_ACCEPT"
+    DELAYED_ACCEPT = "DELAYED_ACCEPT"
+    PARTIAL_ACCEPT = "PARTIAL_ACCEPT"
+
+
 @dataclass
 class UserRequest:
     """用户请求"""
     user_id: str
     service_type: str  # "voice", "video", "data", "navigation", "emergency", "location_based"
     bandwidth_mbps: float
+    min_bandwidth_mbps: float # 新增最小带宽需求
     max_latency_ms: float
     min_reliability: float  # 0-1
     priority: int  # 1-10, 10为最高优先级
@@ -147,6 +157,16 @@ class AllocationResult:
     allocation_success: bool
     allocation_time: float
     resource_cost: float  # 资源消耗成本
+
+
+@dataclass
+class AdmissionResult:
+    """封装准入决策的结果"""
+    decision: AdmissionDecision
+    confidence: float = 1.0
+    allocated_bandwidth: Optional[float] = None
+    allocated_satellite: Optional[int] = None
+    reason: str = ""
 
 
 @dataclass

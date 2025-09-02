@@ -12,8 +12,7 @@ import numpy as np
 from src.core.interfaces import DSROQInterface
 from src.core.state import NetworkState, FlowRequest, UserRequest, AllocationResult
 from .mcts_routing import MCTSRouter
-from .lyapunov_optimizer import LyapunovOptimizer
-from .bandwidth_allocator import BandwidthAllocator
+from .core import LyapunovScheduler
 
 
 class DSROQController(DSROQInterface):
@@ -25,8 +24,7 @@ class DSROQController(DSROQInterface):
         
         # 初始化子模块
         self.mcts_router = MCTSRouter(config)
-        self.lyapunov_optimizer = LyapunovOptimizer(config)
-        self.bandwidth_allocator = BandwidthAllocator(config)
+        self.lyapunov_scheduler = LyapunovScheduler(config)
         
         # 性能统计
         self.total_requests = 0
@@ -73,9 +71,11 @@ class DSROQController(DSROQInterface):
                 flow_id=flow_request.flow_id,
                 route=route,
                 allocated_bandwidth=allocated_bandwidth,
-                estimated_latency=self._estimate_latency(route, network_state),
-                qos_class=flow_request.qos_class,
-                allocation_time=time.time()
+                expected_latency=self._estimate_latency(route, network_state),
+                expected_reliability=max(0.0, min(1.0, 1.0 - 0.01 * len(route))),
+                allocation_success=True,
+                allocation_time=time.time(),
+                resource_cost=max(0.0, len(route) * 0.1)
             )
             
             # 5. 更新网络状态
@@ -119,15 +119,22 @@ class DSROQController(DSROQInterface):
         try:
             # 1. 检查路径可用带宽
             available_bandwidth = self._get_path_available_bandwidth(route, network_state)
+            if available_bandwidth <= 0:
+                return 0.0
             
-            # 2. 使用李雅普诺夫优化器计算最优分配
-            optimal_bandwidth = self.lyapunov_optimizer.optimize_allocation(
-                flow_request, route, network_state, available_bandwidth
+            # 2. 使用李雅普诺夫调度器进行决策
+            scheduling_decision = self.lyapunov_scheduler.schedule_flow(
+                flow_request, route
             )
             
-            # 3. 使用带宽分配器进行精细分配
-            allocated_bandwidth = self.bandwidth_allocator.allocate(
-                flow_request, route, optimal_bandwidth, network_state
+            # 3. 从决策中获取分配的带宽
+            allocated_bandwidth = scheduling_decision.get("rate_limit_mbps", 0.0)
+            
+            # 确保分配的带宽不超过可用带宽和请求带宽
+            allocated_bandwidth = min(
+                allocated_bandwidth,
+                available_bandwidth,
+                flow_request.bandwidth_requirement
             )
             
             return allocated_bandwidth
@@ -141,17 +148,33 @@ class DSROQController(DSROQInterface):
                                  flow_request: FlowRequest,
                                  network_state: NetworkState) -> Optional[AllocationResult]:
         """处理准入决策，返回资源分配结果"""
-        # 这个方法主要用于与准入控制模块的集成
-        if hasattr(decision, 'decision') and decision.decision.value == 'accept':
-            # 如果准入控制决定接受，进行资源分配
-            user_request = self._convert_to_user_request(flow_request)
+        from src.admission.admission_controller import AdmissionDecision
+        
+        # 检查决策是否需要资源分配
+        if hasattr(decision, 'decision'):
+            decision_type = decision.decision
+        else:
+            decision_type = decision
+            
+        if decision_type in [AdmissionDecision.ACCEPT, 
+                           AdmissionDecision.DEGRADED_ACCEPT, 
+                           AdmissionDecision.PARTIAL_ACCEPT]:
+            # 根据决策类型调整流请求
+            adjusted_flow = self._adjust_flow_for_decision(flow_request, decision_type, decision)
+            
+            # 进行资源分配
+            user_request = self._convert_to_user_request(adjusted_flow)
             return self.process_user_request(user_request, network_state)
         else:
             return None
     
     def update_queue_states(self, network_state: NetworkState) -> None:
-        """更新队列状态用于李雅普诺夫优化"""
-        self.lyapunov_optimizer.update_queue_states(network_state)
+        """更新队列状态用于李雅普诺夫优化（最简实现）"""
+        try:
+            # 直接使用网络状态中的队列长度作为调度器的队列状态
+            self.lyapunov_scheduler.queue_states = dict(network_state.queue_lengths)
+        except Exception as e:
+            self.logger.debug(f"更新队列状态失败: {e}")
     
     def _convert_to_flow_request(self, user_request: UserRequest, network_state: NetworkState) -> FlowRequest:
         """将用户请求转换为流请求"""
@@ -170,6 +193,41 @@ class DSROQController(DSROQInterface):
             destination=destination
         )
     
+    def _adjust_flow_for_decision(self, 
+                                 flow_request: FlowRequest, 
+                                 decision_type: Any, 
+                                 decision: Any) -> FlowRequest:
+        """根据准入决策调整流请求参数"""
+        from src.admission.admission_controller import AdmissionDecision
+        import copy
+        
+        adjusted_flow = copy.deepcopy(flow_request)
+        
+        if decision_type == AdmissionDecision.DEGRADED_ACCEPT:
+            # 降级接受：降低带宽要求和QoS等级
+            adjusted_flow.bandwidth_requirement *= 0.7
+            if hasattr(decision, 'allocated_bandwidth') and decision.allocated_bandwidth:
+                adjusted_flow.bandwidth_requirement = decision.allocated_bandwidth
+            
+            # 放宽延迟要求
+            adjusted_flow.latency_requirement *= 1.3
+            
+            # 降低可靠性要求
+            adjusted_flow.reliability_requirement = max(0.8, adjusted_flow.reliability_requirement * 0.9)
+            
+        elif decision_type == AdmissionDecision.PARTIAL_ACCEPT:
+            # 部分接受：按比例缩减带宽
+            if hasattr(decision, 'allocated_bandwidth') and decision.allocated_bandwidth:
+                adjusted_flow.bandwidth_requirement = decision.allocated_bandwidth
+            else:
+                adjusted_flow.bandwidth_requirement *= 0.5
+        
+        elif decision_type == AdmissionDecision.DELAYED_ACCEPT:
+            # 延迟接受：暂时不调整参数，但可能需要加入队列
+            pass
+        
+        return adjusted_flow
+
     def _convert_to_user_request(self, flow_request: FlowRequest) -> UserRequest:
         """将流请求转换为用户请求（用于兼容性）"""
         return UserRequest(
@@ -256,27 +314,47 @@ class DSROQController(DSROQInterface):
         return total_latency
     
     def _update_network_state(self, allocation_result: AllocationResult, network_state: NetworkState):
-        """更新网络状态"""
+        """更新网络状态（占用资源）"""
         route = allocation_result.route
         bandwidth = allocation_result.allocated_bandwidth
-        
+
         # 更新链路利用率
         for i in range(len(route) - 1):
             link_key = (route[i], route[i + 1])
-            
+
             if link_key in network_state.link_capacity:
                 capacity = network_state.link_capacity[link_key]
                 current_utilization = network_state.link_utilization.get(link_key, 0.0)
-                
+
                 # 增加利用率
                 additional_utilization = bandwidth / capacity if capacity > 0 else 0.0
                 new_utilization = min(1.0, current_utilization + additional_utilization)
                 network_state.link_utilization[link_key] = new_utilization
-        
+
         # 更新队列长度（简化）
         for sat_id in route:
             current_queue = network_state.queue_lengths.get(sat_id, 0.0)
             network_state.queue_lengths[sat_id] = current_queue + bandwidth * 0.1
+
+    def deallocate(self, allocation_result: AllocationResult, network_state: NetworkState) -> None:
+        """回收之前分配的资源（最简实现）"""
+        try:
+            route = allocation_result.route
+            bandwidth = allocation_result.allocated_bandwidth
+            # 回退链路利用率
+            for i in range(len(route) - 1):
+                link_key = (route[i], route[i + 1])
+                if link_key in network_state.link_capacity:
+                    capacity = network_state.link_capacity[link_key]
+                    current_utilization = network_state.link_utilization.get(link_key, 0.0)
+                    delta = bandwidth / capacity if capacity > 0 else 0.0
+                    network_state.link_utilization[link_key] = max(0.0, current_utilization - delta)
+            # 回退队列长度
+            for sat_id in route:
+                current_queue = network_state.queue_lengths.get(sat_id, 0.0)
+                network_state.queue_lengths[sat_id] = max(0.0, current_queue - bandwidth * 0.1)
+        except Exception as e:
+            self.logger.debug(f"资源回收失败: {e}")
     
     def get_statistics(self) -> Dict[str, Any]:
         """获取统计信息"""

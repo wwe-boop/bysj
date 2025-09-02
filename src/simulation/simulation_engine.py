@@ -11,13 +11,13 @@ import numpy as np
 from dataclasses import dataclass
 
 from src.core.config import SystemConfig
-from src.core.state import NetworkState, UserRequest, SystemState, PerformanceMetrics
+from src.core.state import NetworkState, UserRequest, SystemState, PerformanceMetrics, AdmissionDecision
 from src.hypatia.hypatia_adapter import HypatiaAdapter
 from src.admission.admission_controller import AdmissionController
 from src.admission.threshold_admission import ThresholdAdmissionController
-from src.admission.positioning_aware_admission import PositioningAwareAdmissionController
 from src.dsroq.dsroq_controller import DSROQController
 from src.positioning.positioning_calculator import PositioningCalculator
+from src.positioning.metrics import get_positioning_metrics_calculator
 from .traffic_generator import TrafficGenerator
 from .event_scheduler import EventScheduler
 from .performance_monitor import PerformanceMonitor
@@ -118,26 +118,25 @@ class SimulationEngine:
         """初始化准入控制器"""
         algorithm = self.config.admission.algorithm.lower()
         
-        if algorithm == 'positioning_aware':
-            self.admission_controller = PositioningAwareAdmissionController(
-                self.config.admission.__dict__
-            )
-        elif algorithm == 'drl':
+        if algorithm == 'drl':
             try:
                 from src.admission.drl_admission import DRLAdmissionController
                 self.admission_controller = DRLAdmissionController(
                     config=self.config,
                     simulation_engine=self
                 )
+                self.logger.info("使用DRL准入控制器")
             except ImportError:
                 self.logger.warning("DRL不可用，回退到阈值控制")
                 self.admission_controller = ThresholdAdmissionController(
                     self.config.admission.__dict__
                 )
         else:
+            # 默认使用阈值控制器（集成定位感知功能）
             self.admission_controller = ThresholdAdmissionController(
                 self.config.admission.__dict__
             )
+            self.logger.info("使用阈值准入控制器")
     
     def run_simulation(self) -> SimulationResult:
         """运行完整仿真"""
@@ -240,8 +239,12 @@ class SimulationEngine:
                 user_request, self.current_network_state, positioning_metrics
             )
             
-            # 3. 如果接受，进行资源分配
-            if admission_result.decision.value in ['accept', 'degraded_accept', 'partial_accept']:
+            # 3. 如果接受，进行资源分配（枚举直接比较，避免大小写不一致问题）
+            if admission_result.decision in [
+                AdmissionDecision.ACCEPT,
+                AdmissionDecision.DEGRADED_ACCEPT,
+                AdmissionDecision.PARTIAL_ACCEPT
+            ]:
                 allocation_result = self.dsroq_controller.process_user_request(
                     user_request, self.current_network_state
                 )
@@ -282,8 +285,19 @@ class SimulationEngine:
             if user_id in self.active_users:
                 # 释放资源
                 allocation_result = self.active_users[user_id]['allocation_result']
-                if hasattr(self.dsroq_controller.bandwidth_allocator, 'deallocate'):
-                    self.dsroq_controller.bandwidth_allocator.deallocate(allocation_result.flow_id)
+                # 优先通过控制器提供的接口回收资源
+                if hasattr(self.dsroq_controller, 'deallocate'):
+                    try:
+                        self.dsroq_controller.deallocate(allocation_result, self.current_network_state)
+                    except Exception:
+                        pass
+                # 兼容老实现
+                elif hasattr(self.dsroq_controller, 'bandwidth_allocator') and \
+                     hasattr(self.dsroq_controller.bandwidth_allocator, 'deallocate'):
+                    try:
+                        self.dsroq_controller.bandwidth_allocator.deallocate(allocation_result.flow_id)
+                    except Exception:
+                        pass
                 
                 del self.active_users[user_id]
                 self.logger.debug(f"用户{user_id}会话结束")
@@ -317,6 +331,30 @@ class SimulationEngine:
         
         # 计算性能指标
         performance_metrics = self._calculate_performance_metrics()
+
+        # 维护 DRL 需要的标准化定位特征键
+        try:
+            pm_calc = get_positioning_metrics_calculator(self.config.positioning.__dict__)
+            if positioning_metrics and positioning_metrics.crlb_values:
+                # 取第一个用户的指标做代表（简化）
+                crlb0 = positioning_metrics.crlb_values[0] if positioning_metrics.crlb_values else float('inf')
+                gdop0 = positioning_metrics.gdop_values[0] if positioning_metrics.gdop_values else float('inf')
+                vis0 = positioning_metrics.visible_satellites_count[0] if positioning_metrics.visible_satellites_count else 0
+                sinr_db = positioning_metrics.average_sinr[0] if positioning_metrics.average_sinr else 0.0
+                # 将 dB 近似映射到 [0,1] 作为信号质量代理
+                sig_quality = min(1.0, max(0.0, (sinr_db + 10.0) / 30.0))
+                user_metrics = {
+                    'crlb': crlb0,
+                    'gdop': gdop0,
+                    'visible_satellites': vis0,
+                    'cooperative_satellites': 0,
+                    'signal_quality_avg': sig_quality,
+                }
+            else:
+                user_metrics = {}
+            self.current_positioning_metrics = pm_calc.get_drl_state_features(user_metrics)
+        except Exception:
+            self.current_positioning_metrics = None
         
         return SystemState(
             network_state=self.current_network_state,
@@ -336,11 +374,17 @@ class SimulationEngine:
             for info in self.active_users.values()
         )
         
-        # 计算延迟
-        avg_latency = np.mean([
-            info['allocation_result'].estimated_latency 
-            for info in self.active_users.values()
-        ]) if self.active_users else 0.0
+        # 计算延迟（兼容 expected_latency 与 estimated_latency 命名）
+        avg_latency = 0.0
+        if self.active_users:
+            latencies = []
+            for info in self.active_users.values():
+                alloc = info['allocation_result']
+                latency = getattr(alloc, 'estimated_latency', None)
+                if latency is None:
+                    latency = getattr(alloc, 'expected_latency', 0.0)
+                latencies.append(latency)
+            avg_latency = np.mean(latencies) if latencies else 0.0
         
         # 计算QoE评分
         qoe_score = self._calculate_qoe_score()
@@ -377,7 +421,7 @@ class SimulationEngine:
             bandwidth_satisfaction = min(1.0, allocation.allocated_bandwidth / request.bandwidth_mbps)
             
             # 延迟满足度
-            latency_satisfaction = max(0.0, 1.0 - allocation.estimated_latency / request.max_latency_ms)
+            latency_satisfaction = max(0.0, 1.0 - allocation.expected_latency / request.max_latency_ms)
             
             # 综合QoE
             qoe = 0.6 * bandwidth_satisfaction + 0.4 * latency_satisfaction

@@ -38,22 +38,31 @@ try:
         sys.path.append(hypatia_satgen_path)
 
     from satgen.tles.read_tles import read_tles
-    from satgen.tles.generate_tles_from_scratch import generate_tles_from_scratch_manual
+    from satgen.tles.generate_tles_from_scratch import (
+        generate_tles_from_scratch_manual,
+        generate_tles_from_scratch_with_sgp,
+    )
     from satgen.ground_stations.read_ground_stations import read_ground_stations_extended
     from satgen.ground_stations.extend_ground_stations import extend_ground_stations
     from satgen.isls.read_isls import read_isls
     from satgen.isls.generate_plus_grid_isls import generate_plus_grid_isls
     from satgen.interfaces.read_gsl_interfaces_info import read_gsl_interfaces_info
-    from satgen.dynamic_state.generate_dynamic_state import generate_dynamic_state_algorithm_free_one_only_over_isls
+    from satgen.dynamic_state.generate_dynamic_state import generate_dynamic_state
+    from satgen.distance_tools.distance_tools import (
+        geodetic2cartesian,
+    )
+    from astropy import units as u
+    # Skyfield 用于 TLE 推算
+    from skyfield.api import EarthSatellite, load, wgs84
     HYPATIA_AVAILABLE = True
     logging.info("成功导入Hypatia模块")
 except ImportError as e:
-    logging.warning(f"无法导入Hypatia模块: {e}，将使用简化实现")
+    logging.error(f"无法导入Hypatia模块: {e}")
     HYPATIA_AVAILABLE = False
 
 try:
     from ..core.interfaces import HypatiaInterface
-    from ..core.state import NetworkState, FlowRequest, PositioningMetrics
+    from ..core.state import NetworkState, FlowRequest, PositioningMetrics, UserRequest
     from ..core.config import ConstellationConfig, BackendConfig
 except ImportError:
     # 如果相对导入失败，尝试绝对导入
@@ -64,7 +73,7 @@ except ImportError:
         sys.path.append(src_path)
 
     from core.interfaces import HypatiaInterface
-    from core.state import NetworkState, FlowRequest, PositioningMetrics
+    from core.state import NetworkState, FlowRequest, PositioningMetrics, UserRequest
     from core.config import ConstellationConfig, BackendConfig
 from .constellation import ConstellationManager
 from .simulator import NS3Simulator
@@ -96,54 +105,56 @@ class HypatiaAdapter(HypatiaInterface):
         self.simulation_start_time = 0.0
         self.temp_gen_dir = backend_config.data_dir
 
-        # 后端模式
+        # 后端模式（仅 real 支持）
         self.ns3_mode: str = backend_config.ns3_mode
-        self.use_simplified = True  # 默认使用简化模式
-
-        # 星座管理器（用于简化模式与 TLE 集成）
+        self.use_simplified = False
+        # 仅保留 real 模式，不再使用 ConstellationManager 简化分支
         self.constellation_manager: Optional[ConstellationManager] = None
         
         self._initialize()
+    def initialize(self, constellation_config: Dict[str, Any]) -> None:
+        """实现接口要求的初始化方法（已在构造函数内部完成）。"""
+        # 允许运行时变更配置并重新初始化
+        if constellation_config:
+            try:
+                # 仅更新已知字段
+                for k, v in constellation_config.items():
+                    if hasattr(self.constellation_config, k):
+                        setattr(self.constellation_config, k, v)
+            except Exception:
+                pass
+        if not self.initialized:
+            self._initialize()
+        else:
+            self.logger.info("HypatiaAdapter 已初始化，跳过重复初始化")
 
     def _initialize(self):
         """根据后端配置初始化适配器"""
         try:
             self.logger.info("初始化Hypatia适配器...")
 
-            # 决定使用真实模式还是简化模式
-            if self.backend_config.hypatia_mode == "real" and HYPATIA_AVAILABLE:
-                self.use_simplified = False
-            else:
-                self.use_simplified = True
-                if self.backend_config.hypatia_mode == "real":
-                    self.logger.warning("请求使用 real Hypatia 模式，但依赖不可用，回退到 simplified 模式")
+            if not HYPATIA_AVAILABLE:
+                raise ImportError("Hypatia (satgenpy) 依赖不可用，无法启用 real 模式")
 
-            # 执行初始化
-            if self.use_simplified:
-                self.logger.info("使用简化实现（不依赖Hypatia）")
-                self._initialize_simplified()
-            else:
-                self.logger.info("使用真实Hypatia实现")
-                # 创建临时目录
-                os.makedirs(self.temp_gen_dir, exist_ok=True)
+            # 创建临时目录
+            os.makedirs(self.temp_gen_dir, exist_ok=True)
 
-                # 生成星座配置
-                self._generate_constellation()
+            # 生成星座配置
+            self._generate_constellation()
 
-                # 生成地面站
-                self._generate_ground_stations()
+            # 生成地面站
+            self._generate_ground_stations()
 
-                # 生成ISL拓扑
-                self._generate_isls()
+            # 生成ISL拓扑
+            self._generate_isls()
 
-                # 生成GSL接口信息
-                self._generate_gsl_interfaces_info()
+            # 生成GSL接口信息
+            self._generate_gsl_interfaces_info()
 
-                # 生成描述文件
-                self._generate_description()
+            # 生成描述文件
+            self._generate_description()
 
-                # 生成动态状态
-                self._generate_dynamic_state()
+            # 可选：生成动态状态（昂贵）。当前按需计算网络状态，跳过预生成。
 
             self.simulation_start_time = time.time()
             self.initialized = True
@@ -155,11 +166,8 @@ class HypatiaAdapter(HypatiaInterface):
             raise
     
     def _initialize_simplified(self):
-        """简化初始化（不依赖Hypatia）"""
-        # 使用 ConstellationManager（支持 use_tle）统一管理卫星与拓扑
-        self.constellation_manager = ConstellationManager(self.constellation_config.__dict__)
-        self.constellation_manager.initialize()
-        self.logger.info("简化初始化完成")
+        """已移除，仅保留 real 模式"""
+        raise NotImplementedError("仅支持 real 模式")
 
     def _generate_constellation(self):
         """生成卫星星座"""
@@ -168,21 +176,78 @@ class HypatiaAdapter(HypatiaInterface):
         tles_filename = os.path.join(self.temp_gen_dir, "tles.txt")
 
         # 使用Hypatia的TLE生成功能
-        generate_tles_from_scratch_manual(
+        # 使用 SGP4 生成更稳健的 TLE（避免 epoch 计算异常）
+        generate_tles_from_scratch_with_sgp(
             tles_filename,
             config.name,
             config.num_orbits,
             config.num_sats_per_orbit,
-            config.altitude_km * 1000,
+            0,
             config.inclination_deg,
             config.eccentricity,
             config.arg_of_perigee_deg,
             0.0   # raan_offset_deg
         )
 
+        # 统一将 TLE 纪元改为 2024-01-01（24001.00000000），并修正校验位
+        self._fix_tles_epoch(tles_filename, epoch_yy="24", epoch_day_str="001.00000000")
+
         # 读取生成的卫星信息
-        self.satellites = read_tles(tles_filename)
+        tles = read_tles(tles_filename)
+        self.satellites = tles["satellites"]
+        self.epoch = tles["epoch"]
         self.logger.info(f"生成了{len(self.satellites)}颗卫星")
+        # Skyfield 卫星对象
+        self.sf_satellites = []
+        with open(tles_filename, 'r') as f:
+            lines = f.read().splitlines()
+        i = 1
+        while i + 2 < len(lines):
+            name = lines[i]
+            l1 = lines[i+1]
+            l2 = lines[i+2]
+            self.sf_satellites.append(EarthSatellite(l1, l2, name))
+            i += 3
+        # 时间尺度
+        self.ts = load.timescale()
+
+    def _fix_tles_epoch(self, filename: str, epoch_yy: str, epoch_day_str: str) -> None:
+        """重写 TLE 第1行的纪元字段（列 19-32），同时重算校验位。"""
+        try:
+            with open(filename, 'r') as f:
+                lines = f.readlines()
+            # 第一行是 "<n_orbits> <n_sats_per_orbit>\n"，之后按 3 行一组
+            i = 1
+            while i + 2 < len(lines):
+                # name 行: lines[i]
+                l1 = lines[i + 1].rstrip('\n')
+                l2 = lines[i + 2].rstrip('\n')
+                if len(l1) >= 69 and l1.startswith('1 '):
+                    # 列 0..67（68个字符）重新生成，列 18:20 年份，20:32 年儒略日
+                    l1_body = list(l1)
+                    l1_body[18:20] = list(epoch_yy)
+                    # 确保 epoch_day_str 长度为 12
+                    epoch_field = epoch_day_str
+                    if len(epoch_field) < 12:
+                        epoch_field = epoch_field + ('0' * (12 - len(epoch_field)))
+                    l1_body[20:32] = list(epoch_field)
+                    # 重新计算校验（前 68 位）
+                    body_68 = ''.join(l1_body[:68])
+                    s = 0
+                    for ch in body_68:
+                        if ch.isdigit():
+                            s += int(ch)
+                        if ch == '-':
+                            s += 1
+                    checksum = str(s % 10)
+                    l1_new = body_68 + checksum
+                    lines[i + 1] = l1_new + '\n'
+                i += 3
+            with open(filename, 'w') as f:
+                f.writelines(lines)
+            self.logger.info("已将 TLE 纪元统一为 2024-01-01 并修正校验位")
+        except Exception as e:
+            self.logger.warning(f"修正 TLE 纪元失败（忽略继续）: {e}")
 
     def _generate_ground_stations(self):
         """生成地面站"""
@@ -196,9 +261,11 @@ class HypatiaAdapter(HypatiaInterface):
             ("Kolkata", 22.5726, 88.3639), ("Manila", 14.5995, 120.9842), ("Lagos", 6.5244, 3.3792),
             ("Rio de Janeiro", -22.9068, -43.1729), ("Tianjin", 39.3434, 117.3616)
         ]
-        gs_filename = os.path.join(self.temp_gen_dir, "ground_stations.txt")
-        self._generate_ground_stations_file(gs_filename, major_cities)
-        self.ground_stations = read_ground_stations_extended(gs_filename)
+        gs_basic = os.path.join(self.temp_gen_dir, "ground_stations.txt")
+        gs_extended = os.path.join(self.temp_gen_dir, "ground_stations_extended.txt")
+        self._generate_ground_stations_file(gs_basic, major_cities)
+        extend_ground_stations(gs_basic, gs_extended)
+        self.ground_stations = read_ground_stations_extended(gs_extended)
         self.logger.info(f"生成了{len(self.ground_stations)}个地面站")
 
     def _generate_ground_stations_file(self, filename: str, cities: List[Tuple[str, float, float]]):
@@ -216,7 +283,7 @@ class HypatiaAdapter(HypatiaInterface):
             isls_filename,
             config.num_orbits,
             config.num_sats_per_orbit,
-            1, True
+            1, 0
         )
         self.isls = read_isls(isls_filename, len(self.satellites))
         self.logger.info(f"生成了{len(self.isls)}条星间链路")
@@ -246,16 +313,25 @@ class HypatiaAdapter(HypatiaInterface):
         dynamic_state_dir = os.path.join(self.temp_gen_dir, "dynamic_state")
         os.makedirs(dynamic_state_dir, exist_ok=True)
 
-        generate_dynamic_state_algorithm_free_one_only_over_isls(
-            self.temp_gen_dir,
-            self.simulation_end_time_s * 1000 * 1000 * 1000,
-            self.dynamic_state_update_interval_ms * 1000 * 1000,
-            len(self.satellites),
-            len(self.ground_stations),
+        output_dynamic_state_dir = os.path.join(self.temp_gen_dir, "dynamic_state")
+        os.makedirs(output_dynamic_state_dir, exist_ok=True)
+        # 描述文件中的阈值
+        max_gsl_length_m = 1089686.0
+        max_isl_length_m = 5016062.5
+        generate_dynamic_state(
+            output_dynamic_state_dir,
+            self.epoch,
+            int(self.simulation_end_time_s * 1e9),
+            int(self.dynamic_state_update_interval_ms * 1e6),
+            0,
+            self.satellites,
+            self.ground_stations,
             self.isls,
             self.gsl_interfaces_info,
-            self.satellites,
-            self.ground_stations
+            max_gsl_length_m,
+            max_isl_length_m,
+            "algorithm_free_one_only_over_isls",
+            False
         )
         self.logger.info("动态状态生成完成")
 
@@ -266,37 +342,50 @@ class HypatiaAdapter(HypatiaInterface):
 
         self.current_time = time_step
 
-        if self.use_simplified:
-            if self.constellation_manager is None:
-                raise RuntimeError("简化模式下星座管理器未初始化")
-            
-            satellite_positions = self.constellation_manager.get_satellite_positions(time_step)
-            topology = self.constellation_manager.get_topology_matrix(time_step)
-            links = self.constellation_manager.get_link_states(time_step)
-        else:
-            # 真实模式下的状态获取逻辑
-            # 注意：此处的动态状态读取逻辑需要根据Hypatia的实际输出进行实现
-            # 这里暂时使用占位符
-            self.logger.warning("真实Hypatia模式下的get_network_state尚未完全实现，使用占位符数据")
-            num_sats = len(self.satellites)
-            satellite_positions = [{'id': i, 'lat': 0, 'lon': 0, 'alt': self.constellation_config.altitude_km} for i in range(num_sats)]
-            topology = np.zeros((num_sats, num_sats))
-            links = []
+        # 基于 TLE 计算卫星位置与三维坐标
+        # 计算当前时间（datetime）用于 Skyfield 推算
+        try:
+            epoch_dt = self.epoch.datetime
+        except Exception:
+            import datetime as _dt
+            epoch_dt = _dt.datetime(2024, 1, 1, 0, 0, 0)
+        import datetime as _dt
+        t_sec = 1.0 if (time_step is None or time_step <= 0) else float(time_step)
+        date_dt = epoch_dt + _dt.timedelta(seconds=t_sec)
+        satellite_positions = []
+        # 计算时间：避免与 TLE epoch 完全相同导致的计算异常，加入微小正偏移
+        # Skyfield 推算子星点与高度
+        t_sf = self.ts.utc(date_dt.year, date_dt.month, date_dt.day, date_dt.hour, date_dt.minute, date_dt.second)
+        satellite_positions = []
+        for sid, sf_sat in enumerate(self.sf_satellites):
+            geocentric = sf_sat.at(t_sf)
+            sp = wgs84.subpoint(geocentric)
+            lat = sp.latitude.degrees
+            lon = sp.longitude.degrees
+            alt_m = sp.elevation.m
+            x, y, z = geodetic2cartesian(lat, lon, alt_m)
+            satellite_positions.append({'id': sid, 'lat': lat, 'lon': lon, 'alt': self.constellation_config.altitude_km, 'x': x, 'y': y, 'z': z})
 
-        # 简化的链路利用率和容量（实际应该从ns3仿真获取）
-        link_utilization = { (link['source_id'], link['dest_id']): 0.1 for link in links }
-        link_capacity = { (link['source_id'], link['dest_id']): link.get('capacity_gbps', 10.0) for link in links }
+        # 基于 ISL 计算链路与拓扑（直接按当前时刻计算，避免预生成动态状态依赖）
+        num_sats = len(self.satellites)
+        topology = np.zeros((num_sats, num_sats))
+        links = []
+        id_to_xyz = {s['id']: (s['x'], s['y'], s['z']) for s in satellite_positions}
+        for (a, b) in self.isls:
+            x1, y1, z1 = id_to_xyz[a]
+            x2, y2, z2 = id_to_xyz[b]
+            dist_km = ((x2 - x1)**2 + (y2 - y1)**2 + (z2 - z1)**2) ** 0.5 / 1000.0
+            propagation_delay = dist_km / 299792.458
+            base_capacity = 10.0
+            capacity = max(1.0, base_capacity * (1.0 - min(dist_km, 10000.0) / 10000.0))
+            links.append({'source_id': a, 'dest_id': b, 'distance_km': dist_km, 'propagation_delay_ms': propagation_delay, 'capacity_gbps': capacity, 'available': True})
+            topology[a][b] = 1
+            topology[b][a] = 1
 
-        return NetworkState(
-            time_step=time_step,
-            satellites=satellite_positions,
-            links=links,
-            topology=topology,
-            link_utilization=link_utilization,
-            link_capacity=link_capacity,
-            active_flows=[],
-            queue_lengths={i: 0 for i in range(len(satellite_positions))}
-        )
+        link_utilization = {(l['source_id'], l['dest_id']): 0.0 for l in links}
+        link_capacity = {(l['source_id'], l['dest_id']): l['capacity_gbps'] for l in links}
+
+        return NetworkState(time_step=time_step, satellites=satellite_positions, links=links, topology=topology, link_utilization=link_utilization, link_capacity=link_capacity, active_flows=[], queue_lengths={i: 0 for i in range(len(satellite_positions))})
     
     def get_positioning_metrics(self, time_step: float, 
                               user_locations: List[Tuple[float, float]]) -> PositioningMetrics:
@@ -304,8 +393,13 @@ class HypatiaAdapter(HypatiaInterface):
         if not self.initialized:
             raise RuntimeError("Hypatia适配器未初始化")
         
-        # 获取卫星位置
-        satellites = self.constellation_manager.get_satellite_positions(time_step)
+        # 获取卫星位置（基于 TLE）
+        epoch_str = str(self.epoch)
+        date_str = str(self.epoch + time_step * u.s)
+        satellites = []
+        for sid, sat in enumerate(self.satellites):
+            gs_shadow = create_basic_ground_station_for_satellite_shadow(sat, epoch_str, date_str)
+            satellites.append({'id': sid, 'lat': float(gs_shadow['latitude_degrees_str']), 'lon': float(gs_shadow['longitude_degrees_str']), 'alt': self.constellation_config.altitude_km})
         
         # 计算每个用户的定位指标
         crlb_values = []
@@ -393,11 +487,13 @@ class HypatiaAdapter(HypatiaInterface):
         if not self.initialized:
             raise RuntimeError("Hypatia适配器未初始化")
         
-        # 更新星座状态
-        self.constellation_manager.update_time(self.current_time + time_step)
-        
-        # 推进ns3仿真
-        self.simulator.step(time_step)
+        # 更新时间（基于 TLE 推进）
+        # 若存在 ns3 模拟器，推进其内部时间
+        if hasattr(self, 'simulator') and self.simulator is not None:
+            try:
+                self.simulator.step(time_step)
+            except Exception:
+                pass
         
         self.current_time += time_step
     
@@ -534,6 +630,42 @@ class HypatiaAdapter(HypatiaInterface):
         coverage_quality = 0.7 * coverage_ratio + 0.3 * avg_accuracy
         
         return min(1.0, max(0.0, coverage_quality))
+
+    def get_orbit_phase(self, time_step: Optional[float] = None) -> float:
+        """获取星座轨道相位（简化）"""
+        current_time = time_step if time_step is not None else self.current_time
+        # 假设轨道周期为96分钟
+        orbit_period = 96 * 60
+        return (current_time % orbit_period) / orbit_period
+
+    def get_topology_change_rate(self) -> float:
+        """获取拓扑变化率（简化）"""
+        # 这是一个简化实现，实际需要对比不同时间点的拓扑
+        # 返回一个固定的小值，表示拓扑在缓慢变化
+        return 0.01
+    
+    def predict_future_capacity(self, horizon_s: int) -> float:
+        """预测未来网络容量（简化）"""
+        # 近似：以当前 ISL 容量和为基线，做固定折减
+        try:
+            epoch_str = str(self.epoch)
+            date_str = str(self.epoch + (self.current_time) * u.s)
+            # 以当前链路容量之和做基准
+            current_state = self.get_network_state(self.current_time)
+            current_capacity = sum(l.get('capacity_gbps', 0.0) for l in current_state.links)
+        except Exception:
+            current_capacity = 0.0
+        return max(0.0, current_capacity * 0.95)
+
+    def get_routing_stability_metrics(self, user_request: 'UserRequest') -> Dict[str, Any]:
+        """获取路由与切换稳定性指标（占位）"""
+        # 这是一个占位符实现，实际需要复杂的预测模型
+        return {
+            'handover_pred_count_norm': 0.1,  # 预测切换次数（归一化）
+            'earliest_handover_norm': 0.8,    # 最早切换时间（归一化）
+            'seam_flag': 0.0,                 # 跨缝风险标志
+            'contact_margin_norm': 0.9        # 接触裕度（归一化）
+        }
 
     def _calculate_topology_matrix(self, satellites: List[Dict[str, Any]], time_step: float):
         """计算网络拓扑矩阵"""

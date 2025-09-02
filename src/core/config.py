@@ -34,6 +34,18 @@ class ConstellationConfig:
         return self.num_orbits * self.num_sats_per_orbit
 
 
+@dataclass 
+class DRLRewardWeights:
+    """DRL奖励权重配置 (对齐 design/algorithm_design.md 第219-227行)"""
+    qoe: float = 1.0         # w1: QoE增量权重
+    fairness: float = 0.2    # w2: 公平性权重
+    utilization: float = 0.2 # w3: 资源利用权重 (效率)
+    efficiency: float = 0.2  # w3: 同 utilization (兼容)
+    positioning: float = 0.3 # w4: 定位可用性权重 (lambda_pos)
+    violation: float = 0.8   # w5: 违规惩罚权重
+    delay: float = 0.3       # w6: 延迟惩罚权重
+    stability: float = 0.2   # 额外: 稳定性权重
+
 @dataclass
 class DRLConfig:
     """DRL配置"""
@@ -60,6 +72,14 @@ class DRLConfig:
     eval_freq: int = 10000
     save_freq: int = 50000
     log_interval: int = 1000
+    
+    # 奖励权重配置
+    reward_weights: DRLRewardWeights = field(default_factory=DRLRewardWeights)
+    
+    # 探索参数
+    epsilon: float = 0.1
+    epsilon_decay: float = 0.995
+    min_epsilon: float = 0.01
 
 
 @dataclass
@@ -111,6 +131,29 @@ class DSROQConfig:
     max_bandwidth_mbps: float = 100.0
     bandwidth_granularity: float = 0.1
 
+    # 路由与协同参数 (新增)
+    seam_penalty: float = 0.5                 # 跨缝路径的附加代价
+    path_change_penalty: float = 0.2          # 路径变更的惩罚
+    reroute_cooldown_ms: int = 5000           # 重路由的冷却时间
+    lambda_pos: float = 0.2                   # 定位质量在代价函数中的权重
+
+
+@dataclass
+class PositioningQualityWeights:
+    """定位质量权重配置"""
+    visibility: float = 0.3    # 可见性权重
+    gdop: float = 0.25         # GDOP权重
+    accuracy: float = 0.25     # 精度权重
+    signal: float = 0.15       # 信号强度权重
+    geometry: float = 0.05     # 几何分布权重
+
+@dataclass
+class PositioningAvailabilityWeights:
+    """定位可用性权重配置"""
+    crlb: float = 0.35         # CRLB权重
+    gdop: float = 0.25         # GDOP权重
+    visibility: float = 0.25   # 可见性权重
+    cooperation: float = 0.15  # 协作度权重
 
 @dataclass
 class PositioningConfig:
@@ -125,7 +168,17 @@ class PositioningConfig:
     elevation_mask_deg: float = 10.0
     max_range_km: float = 2000.0
     
-    # 定位质量权重
+    # 阈值配置
+    min_visible_satellites: int = 4
+    min_cooperative_satellites: int = 2
+    crlb_threshold_m: float = 50.0
+    gdop_threshold: float = 10.0
+    
+    # 权重配置
+    positioning_quality_weights: PositioningQualityWeights = field(default_factory=PositioningQualityWeights)
+    availability_weights: PositioningAvailabilityWeights = field(default_factory=PositioningAvailabilityWeights)
+    
+    # 定位质量权重（兼容性）
     crlb_weight: float = 0.4
     gdop_weight: float = 0.3
     coverage_weight: float = 0.3
@@ -181,11 +234,11 @@ class VisualizationConfig:
 
 @dataclass
 class BackendConfig:
-    """后端仿真后端配置"""
-    # Hypatia 集成模式：real 使用真实 Hypatia 管线；simplified 使用内置简化模型
-    hypatia_mode: str = "simplified"  # "real" | "simplified"
-    # ns-3 集成模式：real 预留对接真实 ns-3；simplified 使用内置 NS3Simulator 模拟
-    ns3_mode: str = "simplified"      # "real" | "simplified"
+    """后端仿真后端配置（仅保留 real 模式）"""
+    # Hypatia 集成模式：仅支持 real
+    hypatia_mode: str = "real"
+    # ns-3 集成模式：仅保留 real（如未接入，可与 Hypatia 管线占位集成）
+    ns3_mode: str = "real"
     # 数据目录：TLE/ISL/GSL/动态状态等生成或读取目录
     data_dir: str = "/tmp/hypatia_temp"
 
